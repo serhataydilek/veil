@@ -12,7 +12,7 @@ Phase 0.8 review packages (`docs/review/`) prepare these decisions but do not re
 - Capability issuance/revocation authentication and rate limiting/Sybil resistance without durable personal identifiers; assess accessibility and privacy cost of each option.
 - Push metadata reduction architecture: assess polling, rotated wake handles, and independently operated separation against their actual correlation and availability costs; V1 knowingly accepts direct token linkability.
 - Identity-key rotation/replacement and safety-code UX; decide whether any legitimate migration is ever supported.
-- Platform implementation of the accepted product-state rules: secure-storage failure handling, app lock timeout, backup exclusions, recent-preview/screenshot limits, clipboard behavior, and notification permission/OS history behavior.
+- Platform implementation of the accepted product-state rules: app lock timeout, recent-preview/screenshot limits, clipboard behavior, and notification permission/OS history behavior. Phase 1B implements only the Android local-protection substrate, its fail-closed key-loss/unreadable-state behavior, and existing backup exclusions; identity/session storage remains pending.
 - Database encryption, Keystore capabilities/fallbacks, backup exclusions, WAL cleanup, screenshots/clipboard/recent-preview policy by Android version.
 - Packet-size buckets, ordering/reordering limit, mailbox rotation thresholds/revocation, ACK failure and crash consistency.
 - Operational incident process without retaining sensitive logs; exact proxy log configuration, dependency provenance/SBOM/reproducible build policy.
