@@ -25,11 +25,11 @@ Each secure conversation has a random opaque **mailbox epoch handle**. The initi
 
 Rotate after the first of: 256 sent application envelopes in the epoch, seven days of active epoch age, or an explicit session reset. The count bounds long high-volume correlation; seven days bounds a quiet active relationship without frequent battery-wasting control traffic. They are initial operational limits, not cryptographic constants, and require load/battery validation before shipping. Reconnect alone is not a trigger because it creates needless observable churn.
 
-**Block** is a local policy denying rendering and processing from a peer/session and discarding matching envelopes. **Reset** discards ratchet/session state and rotates mailbox credentials after explicit user action, retaining the conversation shell only locally. **Destroy conversation** removes local session, aliases/messages subject to deletion limits, blocks old handles, and sends an authenticated best-effort relay revocation for current/overlap handles. It does not guarantee delivery of revocation to a malicious relay. A destroyed relationship can communicate again only through a fresh mutual pairing using currently valid capabilities.
+**Block** is a local terminal deny state for the peer/session and every current/overlap mailbox epoch. It discards queued and future old-session envelopes before render, refuses old control traffic, and sends authenticated best-effort revocation; no existing session can resume. **Unblock** only removes that deny state. It does not restore session material or handles, reconnect, notify the peer, or bypass mutual pairing. **Reset** is cryptographically terminal: it discards ratchet/session state, invalidates mailbox epochs, and sends best-effort revocation, but may retain a local conversation shell/alias. **Destroy conversation** performs reset and removes local relationship state, aliases if the user requests full destroy, and messages subject to deletion limits. Reset, destroy, and unblock all leave the people disconnected; a new conversation requires both to enter current valid IDs, finish fresh mutual pairing, authenticate a fresh session, and provision a fresh mailbox epoch.
 
 ## Security consequences
 
-Rotation control, next handle, epoch number, and revocation scope are authenticated inside E2EE session traffic. A peer cannot activate a next mailbox without acknowledged provisioning. Old epochs reject new traffic after overlap/revocation and cannot create a new session. Relay revocation authorizes routing-state deletion; it never decrypts content.
+Rotation control, next handle, epoch number, and revocation scope are authenticated inside E2EE session traffic. A peer cannot activate a next mailbox without acknowledged provisioning. Old epochs reject new traffic after overlap/revocation and cannot create a new session. Local terminal state is authoritative even if relay revocation fails; relay revocation only authorizes routing-state deletion and never decrypts content.
 
 ## Privacy consequences
 
@@ -41,18 +41,18 @@ The relay needs current/next epoch state, atomic rotation, short overlap cleanup
 
 ## Residual risks
 
-Offline peers delay rotation; a hostile peer can withhold acknowledgement; a relay can correlate live handles and disrupt delivery. Users may still receive already-queued, valid pre-block data until the client applies its local block policy.
+Offline peers delay rotation; a hostile peer can withhold acknowledgement; a relay can correlate live handles and disrupt delivery. A malicious relay may retain or deliver stale packets, but the client must discard them before render after terminal state is recorded.
 
 ## Implementation requirements
 
 - Generate handles with an audited CSPRNG; never derive from public ID or stable identity.
 - Persist epoch state transactionally with secure-session state and make rotation/revocation idempotent.
 - Enforce server acceptance window no longer than queued-message maximum; purge old state/links at completion.
-- Treat reset/destroy as a hard terminal state for old session identifiers.
+- Treat block, reset, and destroy as hard terminal states for old session identifiers; unblock must not reconstruct any old state.
 
 ## Tests required
 
-Offline and lost-ACK rotation tests; concurrent rotation conflict tests; queue migration/expiry tests; revocation race/replay tests; persistence/crash recovery tests; and relay retention/log tests proving no retained mailbox-history chain.
+Offline and lost-ACK rotation tests; concurrent rotation conflict tests; queue migration/expiry tests; block/unblock/reset/destroy and revocation race/replay tests; persistence/crash recovery tests; and relay retention/log tests proving no retained mailbox-history chain.
 
 ## Open issues
 
