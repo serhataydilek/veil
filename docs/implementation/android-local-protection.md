@@ -25,6 +25,8 @@ IV (12 bytes)
 ciphertext plus GCM tag (at least 16 bytes)
 ```
 
+The complete encoded VLP1 envelope is bounded to 4,118 bytes (`10-byte header + 12-byte IV + 4,096-byte ciphertext`). Physical file reads stream through `AtomicFile.openRead()` and retain at most 4,119 bytes, so overflow is detected before an allocation based on an untrusted file length. VLP1 remains fixed to a 12-byte IV; an unexpected provider IV length fails provisioning safely instead of changing the format.
+
 The cipher is `AES/GCM/NoPadding`. The provider generates a fresh randomized IV for every encryption. The fixed non-secret AAD is `veil.local-state.v1`. Unsupported versions, malformed/truncated bytes, invalid lengths, oversized lengths, trailing data, and authentication failure all fail closed without unbounded allocation.
 
 ## Persistence and lifecycle
@@ -36,6 +38,8 @@ NOT_PROVISIONED -> PROVISIONING -> READY
 READY -> KEY_UNAVAILABLE | CORRUPT_OR_UNREADABLE
 READY | KEY_UNAVAILABLE | CORRUPT_OR_UNREADABLE -> PURGING -> PURGED
 ```
+
+Compose does not read, provision, or purge protected state directly. A small coroutine-backed application-state controller performs those operations on an IO dispatcher and publishes status back on the main dispatcher. Provider, JCA, and I/O failures at the Keystore boundary fail closed; they do not produce a ready state or a replacement key.
 
 `NOT_PROVISIONED` is only for no state file. Existing ciphertext with a missing/unavailable Keystore key is `KEY_UNAVAILABLE`, never a fresh install. Existing but malformed or unauthenticated ciphertext is `CORRUPT_OR_UNREADABLE`. Neither state auto-creates a key, overwrites data, or claims recovery.
 

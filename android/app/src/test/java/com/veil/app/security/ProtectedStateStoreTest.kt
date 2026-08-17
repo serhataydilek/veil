@@ -1,8 +1,14 @@
 package com.veil.app.security
 
 import java.io.IOException
+import java.security.ProviderException
+import java.util.concurrent.TimeUnit
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -62,6 +68,120 @@ class ProtectedStateStoreTest {
         )
 
         assertEquals(null, ProtectedStateFormat.decode(malformed))
+    }
+
+    @Test
+    fun exactMaximumEnvelopeIsAccepted() {
+        val ciphertext = ByteArray(ProtectedStateFormat.maxCiphertextLength) { 7 }
+        val encoded = ProtectedStateFormat.encode(ProtectedBlob(ByteArray(ProtectedStateFormat.IV_LENGTH), ciphertext))
+
+        assertEquals(ProtectedStateFormat.MAX_ENCODED_LENGTH, encoded.size)
+        assertEquals(ciphertext.toList(), ProtectedStateFormat.decode(encoded)?.ciphertext?.toList())
+    }
+
+    @Test
+    fun maximumPlusOnePhysicalBytesAreRejectedAfterBoundedRead() {
+        val fixture = fixture()
+        fixture.store.provision()
+        fixture.file.contents = ByteArray(ProtectedStateFormat.MAX_ENCODED_LENGTH + 1)
+
+        assertEquals(ProtectionStatus.CORRUPT_OR_UNREADABLE, fixture.store.currentStatus())
+        assertEquals(ProtectedStateFormat.MAX_ENCODED_LENGTH, fixture.file.lastMaximumLength)
+    }
+
+    @Test
+    fun providerFailureDuringKeyProvisioningFailsClosed() {
+        val file = InMemoryProtectedStateFile()
+        val failingKeys = object : LocalProtectionKeyStore by TestLocalProtectionKeyStore() {
+            override fun provisioningKey(): ExistingKeyResult = throw ProviderException("provider unavailable")
+        }
+
+        assertEquals(ProtectionStatus.ERROR, ProtectedStateStore(failingKeys, file, AesGcmProtectedBlobCipher()).provision())
+    }
+
+    @Test
+    fun providerFailureDuringExistingKeyLookupFailsClosed() {
+        val file = InMemoryProtectedStateFile().apply { contents = byteArrayOf(1) }
+        val failingKeys = object : LocalProtectionKeyStore by TestLocalProtectionKeyStore() {
+            override fun existingKey(): ExistingKeyResult = throw ProviderException("provider unavailable")
+        }
+
+        assertEquals(ProtectionStatus.KEY_UNAVAILABLE, ProtectedStateStore(failingKeys, file, AesGcmProtectedBlobCipher()).currentStatus())
+    }
+
+    @Test
+    fun providerFailureDuringEncryptionFailsClosed() {
+        val fixture = fixture()
+        val failingCipher = object : ProtectedBlobCipher {
+            override fun encrypt(key: SecretKey, plaintext: ByteArray): ProtectedBlob = throw ProviderException("provider unavailable")
+            override fun decrypt(key: SecretKey, blob: ProtectedBlob): ByteArray = throw ProviderException("provider unavailable")
+        }
+
+        assertEquals(ProtectionStatus.ERROR, ProtectedStateStore(fixture.keys, fixture.file, failingCipher).provision())
+    }
+
+    @Test
+    fun unexpectedProviderIvLengthFailsWithoutCrashing() {
+        val fixture = fixture()
+        val wrongIvCipher = object : ProtectedBlobCipher {
+            override fun encrypt(key: SecretKey, plaintext: ByteArray): ProtectedBlob = ProtectedBlob(ByteArray(8), ByteArray(16))
+            override fun decrypt(key: SecretKey, blob: ProtectedBlob): ByteArray = ByteArray(0)
+        }
+
+        assertEquals(ProtectionStatus.ERROR, ProtectedStateStore(fixture.keys, fixture.file, wrongIvCipher).provision())
+    }
+
+    @Test
+    fun duplicatePrepareDoesNotRunConcurrentProvisioning() {
+        val fixture = fixture()
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val controller = LocalProtectionController(
+                fixture.store,
+                executor.asCoroutineDispatcher(),
+                CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            )
+            controller.prepare()
+            controller.prepare()
+            executor.shutdown()
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
+            assertEquals(1, fixture.keys.provisioningCalls)
+            assertEquals(ProtectionStatus.READY, controller.status.value)
+            controller.cancel()
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun initialStatusIsScheduledWithoutSynchronousProtectedStateWork() {
+        val fixture = fixture()
+        fixture.store.provision()
+        val readStarted = java.util.concurrent.CountDownLatch(1)
+        val releaseRead = java.util.concurrent.CountDownLatch(1)
+        fixture.file.onRead = {
+            readStarted.countDown()
+            assertTrue(releaseRead.await(3, TimeUnit.SECONDS))
+        }
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val controller = LocalProtectionController(
+                fixture.store,
+                executor.asCoroutineDispatcher(),
+                CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            )
+
+            assertEquals(ProtectionStatus.CHECKING, controller.status.value)
+            assertTrue(readStarted.await(3, TimeUnit.SECONDS))
+            releaseRead.countDown()
+            executor.shutdown()
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
+            assertEquals(ProtectionStatus.READY, controller.status.value)
+            controller.cancel()
+        } finally {
+            releaseRead.countDown()
+            executor.shutdownNow()
+        }
     }
 
     @Test
@@ -132,7 +252,10 @@ private class TestLocalProtectionKeyStore : LocalProtectionKeyStore {
 
     override fun existingKey(): ExistingKeyResult = key?.let { ExistingKeyResult.Available(it) } ?: ExistingKeyResult.Missing
 
+    var provisioningCalls = 0
+
     override fun provisioningKey(): ExistingKeyResult {
+        provisioningCalls += 1
         provisioningRequested = true
         val current = key ?: KeyGenerator.getInstance("AES").apply { init(256) }.generateKey().also { key = it }
         return ExistingKeyResult.Available(current)
@@ -157,7 +280,13 @@ private class InMemoryProtectedStateFile : ProtectedStateFile {
     var failDeletes = false
 
     override fun exists(): Boolean = contents != null
-    override fun read(): ByteArray = contents ?: throw IOException("missing")
+    var lastMaximumLength: Int? = null
+    var onRead: (() -> Unit)? = null
+    override fun read(maximumLength: Int): ByteArray {
+        lastMaximumLength = maximumLength
+        onRead?.invoke()
+        return contents ?: throw IOException("missing")
+    }
     override fun write(bytes: ByteArray): Boolean {
         if (failWrites) return false
         contents = bytes.copyOf()

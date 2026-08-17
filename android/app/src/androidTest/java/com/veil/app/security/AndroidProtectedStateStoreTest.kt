@@ -20,12 +20,12 @@ class AndroidProtectedStateStoreTest {
         keys = AndroidLocalProtectionKeyStore(TEST_ALIAS)
         file = AndroidAtomicProtectedStateFile(context, TEST_FILE_NAME)
         store = ProtectedStateStore(keys, file, AesGcmProtectedBlobCipher())
-        store.purge()
+        assertTrue("test setup must remove only its isolated alias and file", store.purge().complete)
     }
 
     @After
     fun tearDown() {
-        store.purge()
+        assertTrue("test teardown must remove only its isolated alias and file", store.purge().complete)
     }
 
     @Test
@@ -65,6 +65,14 @@ class AndroidProtectedStateStoreTest {
         assertTrue(result.complete)
         assertFalse(file.exists())
         assertTrue(keys.existingKey() is ExistingKeyResult.Missing)
+    }
+
+    @Test
+    fun oversizedPhysicalFileFailsClosed() {
+        assertTrue(file.write(ByteArray(ProtectedStateFormat.MAX_ENCODED_LENGTH + 1)))
+        keys.provisioningKey()
+
+        assertEquals(ProtectionStatus.CORRUPT_OR_UNREADABLE, store.currentStatus())
     }
 
     private companion object {
