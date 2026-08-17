@@ -5,6 +5,8 @@
 - **Concrete one-to-one library approval:** the Signal-style protocol direction is selected, but legal distribution, upstream support posture, API/persistence fit, maintenance, and independent-review gates must select a library; no custom ratchet is permitted.
 - **Final mutual-rendezvous construction:** the symmetric capability-pair tag was rejected because a relay can enumerate its live-capability corpus. Select and externally review a deployable construction that prevents pre-match target recovery by any single relay role.
 
+Phase 0.8 review packages (`docs/review/`) prepare these decisions but do not resolve either blocker. ADR 010 accepts only the dependency-selection process.
+
 ## IMPORTANT
 
 - Capability issuance/revocation authentication and rate limiting/Sybil resistance without durable personal identifiers; assess accessibility and privacy cost of each option.

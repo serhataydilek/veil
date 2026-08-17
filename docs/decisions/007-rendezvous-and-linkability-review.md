@@ -70,3 +70,7 @@ Model a relay with all live capabilities and recorded intents; prove by attack t
 ## Open issues
 
 The final reviewed mutual-rendezvous protocol/construction is a BLOCKER. Whether Veil can justify split trust or must explicitly accept more relay metadata is unresolved; accepting pre-match target recovery is not approved.
+
+## Phase 0.8 review readiness
+
+`docs/review/rendezvous-review-brief.md`, candidate matrix, and question set package the threat model for external review. They do not select a construction or convert the desired relay property into a current guarantee. RFC 9497 remains a primitive reference, not an approval of any Veil composition.

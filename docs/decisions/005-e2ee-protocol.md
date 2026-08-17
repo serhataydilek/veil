@@ -60,3 +60,7 @@ Official/adopted vectors; offline initiation; identity substitution; modified/re
 ## Open issues
 
 Concrete library/legal approval is still **BLOCKER**. PQ migration policy, formal session management, and exact safety-code derivation are IMPORTANT. A future group requirement would trigger a new MLS decision, not silently repurpose V1.
+
+## Phase 0.8 due-diligence clarification
+
+`docs/review/e2ee-library-due-diligence.md` records current upstream-source screening. It confirms that protocol-family fit is separate from library approval: libsignal remains blocked on legal review, upstream third-party support posture, pinned API/persistence fit, and independent application review; OpenMLS remains a conditional standards-based Rust option with built-but-not-tested upstream Android/iOS targets and group-state cost for V1. This clarification selects neither library and does not replace refreshed evidence at dependency selection.
