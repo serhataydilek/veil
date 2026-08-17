@@ -16,8 +16,8 @@
 
 ## Instrumentation status
 
-- Focused Android Keystore instrumentation tests are present for key creation, round trip, randomized encryption, missing-key handling, and purge.
-- Instrumentation APK compilation is validated. Execution requires an available emulator or device and is not claimed here until run.
+- Focused Android Keystore instrumentation tests were executed on the existing `Medium_Phone_API_36.1` AVD: 5 tests passed with 0 failures/errors.
+- Coverage includes key creation and encrypted-state round trip, randomized encryption, deleted-key with existing-state fail-closed behavior, logical purge, and oversized physical protected-state file rejection.
 
 ## Deliberately blocked
 
@@ -38,4 +38,4 @@
 - Android `test` passed with 18 JVM tests.
 - Android `assembleDebug`, unsigned `assembleRelease`, `lint`, and `assembleAndroidTest` passed.
 - `connectedDebugAndroidTest` passed on the existing `Medium_Phone_API_36.1` AVD: 5 tests, 0 failures/errors.
-- Rust validation remains unexecuted because the configured 1.88.0 toolchain reported that its `cargo.exe` component is unavailable after attempting to sync/install Clippy.
+- Rust source/workspace is unchanged from the previously validated baseline; the final review-pass Cargo rerun was unavailable because the local Rust 1.88.0 installation reported its `cargo.exe` component unavailable. Earlier Phase 1B validation ran the unchanged Rust suite successfully.
