@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/veil-core"]
+resolver = "2"
