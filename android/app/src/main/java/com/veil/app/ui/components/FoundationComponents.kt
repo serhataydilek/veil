@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.veil.app.ui.theme.VeilSpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,8 +42,8 @@ fun EmptyState(
     onSecondary: () -> Unit,
 ) {
     Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+        modifier = modifier.fillMaxSize().padding(VeilSpacing.Lg),
+        verticalArrangement = Arrangement.spacedBy(VeilSpacing.Md, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(title, style = MaterialTheme.typography.headlineSmall)
@@ -55,13 +56,13 @@ fun EmptyState(
 @Composable
 fun PrivacyNotice(text: String) {
     Card {
-        Text(text, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+        Text(text, modifier = Modifier.padding(VeilSpacing.Md), style = MaterialTheme.typography.bodyMedium)
     }
 }
 
 @Composable
 fun LocalStatusBanner(text: String) {
     Card {
-        Text(text, modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium)
+        Text(text, modifier = Modifier.padding(VeilSpacing.Md), style = MaterialTheme.typography.bodyMedium)
     }
 }

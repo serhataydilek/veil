@@ -24,6 +24,7 @@ import com.veil.app.ui.components.EmptyState
 import com.veil.app.ui.components.LocalStatusBanner
 import com.veil.app.ui.components.PrivacyNotice
 import com.veil.app.ui.components.VeilTopBar
+import com.veil.app.ui.theme.VeilSpacing
 
 private enum class AppScreen {
     WELCOME,
@@ -110,8 +111,8 @@ private fun AddIdScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(VeilSpacing.Lg),
+            verticalArrangement = Arrangement.spacedBy(VeilSpacing.Md),
         ) {
             Text("Both people need to add each other’s current IDs before a conversation can begin.")
             OutlinedTextField(
@@ -156,8 +157,8 @@ private fun SettingsScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(VeilSpacing.Lg),
+            verticalArrangement = Arrangement.spacedBy(VeilSpacing.Md),
         ) {
             Text("Privacy", style = MaterialTheme.typography.titleMedium)
             Text("App lock and screen privacy require later platform validation.")
@@ -174,8 +175,8 @@ private fun CenteredContent(padding: PaddingValues, content: @Composable ColumnS
         modifier = Modifier
             .fillMaxSize()
             .padding(padding)
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+            .padding(VeilSpacing.Lg),
+        verticalArrangement = Arrangement.spacedBy(VeilSpacing.Md, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
         content = content,
     )
