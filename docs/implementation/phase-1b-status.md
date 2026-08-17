@@ -30,3 +30,10 @@
 - Keystore protection level is device-dependent and not a product security claim.
 - Key loss or unreadable ciphertext has no automatic recovery or reset.
 - Logical purge does not promise physical-media erasure.
+
+## Validation (2026-08-18)
+
+- Android `test` passed with 11 JVM tests.
+- Android `assembleDebug`, unsigned `assembleRelease`, `lint`, and `assembleAndroidTest` passed.
+- No emulator or device was attached, so `connectedDebugAndroidTest` was not run.
+- Rust `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all` passed; Rust tests: 3.
