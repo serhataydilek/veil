@@ -5,6 +5,7 @@ android/local.properties
 android/*.iml
 android/.externalNativeBuild/
 android/captures/
+android/.kotlin/
 rust/target/
 .idea/
 .vscode/
