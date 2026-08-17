@@ -23,6 +23,12 @@ cd android; .\gradlew.bat test; .\gradlew.bat assembleDebug; .\gradlew.bat lint
 cd rust; cargo fmt --check; cargo clippy --all-targets --all-features -- -D warnings; cargo test --all
 ```
 
+## Final validation (2026-08-18)
+
+- Android `test`, `assembleDebug`, `lint`, and unsigned `assembleRelease` completed successfully with the pinned AGP 9.3.1 / Gradle 9.5.0 toolchain.
+- Rust 1.88.0 validation completed successfully: `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all`.
+- `Cargo.lock` is committed for reproducibility.
+
 ## Known limitations
 
 The app is a local offline shell. It has no identity, ID, message, network, persistence, or secure-messaging capability. It must not be described as a finished secure messenger.
