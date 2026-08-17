@@ -1,0 +1,10 @@
+# E2EE candidate matrix
+
+**Research date:** 2026-08-17. Ratings are qualified screening judgments, not binary safety claims or approval.
+
+| Protocol family | Implementation | License / official third-party support | Rust / Android / future iOS | Offline initiation / FS / PCS | PQ direction | Identity, order, persistence | Maintenance / review evidence | Risk and recommendation |
+|---|---|---|---|---|---|---|---|---|
+| Signal-style asynchronous ratchet | [libsignal](https://github.com/signalapp/libsignal) | AGPL-3.0; repository packages are published by Signal for its own use, not a stated independent-product support guarantee | Rust implementation; Java/Kotlin and Swift bridges; Android artifacts documented; iOS distribution/legal path requires review | GOOD / GOOD / GOOD when correctly integrated | PQXDH specification exists; exact library/version exposure must be checked | Authentication and bounded ratchet behavior are family goals; persistence/prekey/session/safety UX API fit UNKNOWN until pinned evaluation | Active upstream/release notes; specs available; independent application review still required | **BLOCKED**: strongest family fit, but legal/support/API/persistence gates unresolved |
+| MLS | [OpenMLS](https://github.com/openmls/openmls) | MIT; no claim here of product-level mobile support | Rust GOOD; Android/iOS built but not tested upstream | GOOD / GOOD / GOOD in MLS model | RFC ciphersuite/version evolution; Veil PQ policy not selected | Credentials, KeyPackages, commits/epochs and StorageProvider; out-of-order/group state adds complexity | RFC 9420; active maintainers; security advisory history requires version pinning/review | **CONDITIONAL / POOR FIT** for V1 two-party scope; no rendezvous benefit |
+
+Sources: [Signal specifications](https://signal.org/docs/specifications/), [libsignal](https://github.com/signalapp/libsignal), [RFC 9420](https://www.rfc-editor.org/rfc/rfc9420.html), [OpenMLS](https://github.com/openmls/openmls), and [OpenMLS persistence](https://book.openmls.tech/user_manual/persistence.html). “Built” is not “tested” or “supported”; license text is not legal advice.
