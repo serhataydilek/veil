@@ -2,7 +2,7 @@
 
 At first launch, the device generates a stable signing/authentication identity locally. Its private key is non-exportable where Android Keystore hardware support permits; a wrapped core key may be needed for protocol libraries and must be documented and protected by Keystore-held material. There is no account, recovery, password, phone, email, or device migration in Phase 0. Loss of identity material loses the identity and its conversations.
 
-The stable public identity is not a contact address. A contact ID is an opaque, high-entropy capability carrying (or resolving to) an expiry-bound rendezvous credential and enough authenticated public material to prevent substitution. Its displayed form must have an error-detection checksum; it must never be sequential or searchable.
+The stable public identity is not a contact address. A contact ID is an opaque, server-issued, high-entropy expiry-bound capability with a checksum; it is never sequential or searchable. **It must not contain a stable public key, fingerprint, device identifier, or other trivially linkable stable value.**
 
 | ID | purpose | lifetime | terminal behavior |
 |---|---|---:|---|
@@ -14,10 +14,10 @@ These are policy values, not crypto parameters: they can change in a versioned p
 
 ## Conceptual rendezvous (requires review)
 
-Each party independently submits a valid peer capability plus a fresh, privacy-preserving pairing intent. The relay must reveal no outcome to either unilateral submitter. Only a matching, expiry-valid pair of complementary intents causes each device to receive the material needed to establish a session. A submitted intent is authenticated by its owner and bound to its expiry and protocol version; it is not a statement that an arbitrary ID exists.
+Each party independently proves possession of its own valid capability and submits a fresh pairing intent represented by an opaque symmetric tag calculated from its own and the peer capability. The relay must reveal no outcome to either unilateral submitter. Only a matching, expiry-valid pair of complementary intents causes each device to receive the other's encrypted ephemeral pairing material. A submitted intent is authenticated, expiry/version-bound, and not a statement that an arbitrary ID exists.
 
-This is deliberately not a protocol specification. Candidate designs include a reviewed private set-intersection/rendezvous service or a capability-based blind rendezvous design reviewed by external cryptographers. A simple server lookup is insufficient because it enables probing and relationship mapping. Before selection, model what the relay learns, resistance to online guessing, replay, and malicious-client amplification.
+This is deliberately not a production protocol specification. V1's capability-pair tag candidate uses only established primitives but requires external cryptographic review of its composition, canonicalization, replay handling, and privacy properties. A simple server lookup is insufficient because it enables probing and relationship mapping. A private/OPRF rendezvous may be reconsidered only with measurable benefit and review.
 
-On success, both sides derive/session-negotiate a fresh conversation mailbox handle. Thereafter public IDs are unused for routing; rotation never interrupts a session. The handle is random, opaque, scoped to one session, replaceable on reset, and not a stable relationship identifier.
+On success, each client receives the peer's ephemeral pairing material and starts an authenticated secure-session handshake; only then are stable peer identity materials revealed and a safety code available. Thereafter public IDs are unused for routing. Routing uses random mailbox epochs, negotiated by authenticated control traffic with bounded overlap and replacement on reset/destroy; it reduces rather than eliminates relay correlation.
 
 An identity-key change pauses the conversation, deletes no user evidence, and requires explicit user acknowledgment plus safety-code verification before a new session is trusted. Destroy/reset invalidates local session and mailbox credentials; old traffic must not reactivate it.

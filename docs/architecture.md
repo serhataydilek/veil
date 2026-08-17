@@ -18,7 +18,7 @@ flowchart LR
 
 ## Trust and responsibility boundaries
 
-The device owns private identity material, local aliases, session state, and plaintext. The Rust core enforces crypto and expiry policies; Kotlin must not receive private-key export capabilities. The relay accepts authenticated, encrypted envelopes, performs bounded delivery and expiry, and never decrypts content. PostgreSQL holds only state required to rendezvous, rate-limit, and retain undelivered packets. Push is a wake-up hint, not a message channel.
+The device owns private identity material, local aliases, session state, and plaintext. The Rust core enforces crypto and expiry policies; Kotlin must not receive private-key export capabilities. The relay accepts authenticated, encrypted envelopes, performs bounded delivery and expiry, and never decrypts content. PostgreSQL holds only short-lived capability, rendezvous, mailbox-epoch, rate-limit, push-token, and undelivered-packet state. Push is a generic wake-up hint, not a message channel.
 
 ```mermaid
 flowchart LR
@@ -34,6 +34,8 @@ Local storage is separated into Keystore-protected secrets and an encrypted data
 ## Transport boundary
 
 `SecureSession` produces and consumes opaque envelopes; `Transport` only sends, receives, and reports bounded delivery results. It must not choose ciphers, inspect plaintext, derive identities, or alter expiry. This preserves equivalent session guarantees across `InternetTransport`, future `NearbyTransport`, and `ExperimentalMeshTransport`.
+
+Public contact capabilities and session routing are distinct: an opaque, unlinkable contact capability is used only for mutual rendezvous. A completed session routes through a random mailbox epoch handle. Authenticated rotation creates a fresh epoch with bounded overlap; the relay deletes old routing state and does not retain a mailbox-history chain. See the Phase 0.5 ADRs for the decision boundaries.
 
 ## Never sent to the server
 
