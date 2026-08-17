@@ -60,7 +60,7 @@ Even a stronger construction may still expose completed-match timing, source IP,
 
 - Do not add a rendezvous endpoint based on `H(A,B)` or any equivalent enumerable deterministic pair token.
 - Document each service's inputs, keys, output, logs, and deletion schedule before implementation.
-- Require an external cryptographic design review, test vectors, corpus-enumeration tests, and privacy abuse review.
+- Require an external cryptographic design review, test vectors, corpus-enumeration tests that demonstrate resistance to the modeled attack, and privacy abuse review. Testing cannot cryptographically prove a rendezvous construction safe.
 - Keep no unilateral UI/push signal regardless of future construction.
 
 ## Tests required

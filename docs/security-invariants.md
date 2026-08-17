@@ -22,5 +22,8 @@
 20. Unblocking never restores a previous secure session, mailbox epoch, or connection.
 21. A reset or destroyed relationship can be recreated only through fresh mutual pairing using current IDs.
 22. No metadata-minimization claim may imply elimination of timing, relay, provider, or device-level correlation unless the architecture actually provides it.
+23. A local saved ID, retry, timeout, background event, or generic error must not imply peer existence, reachability, reciprocity, blocking, or presence.
+24. User-visible send state, if any, must not imply recipient receipt, opening, or reading; authenticated recipient ACK is operational deletion state only.
+25. Unsent composer plaintext is not persisted across lock, restart, or process death in V1.
 
 Future tests must include property/state-machine tests for expiry/reset/replay, protocol vectors and downgrade tests, relay leak/retention integration tests, logging redaction tests, database/WAL restart tests, and adversarial rendezvous/enumeration testing.

@@ -31,6 +31,10 @@ flowchart LR
 
 Local storage is separated into Keystore-protected secrets and an encrypted database. The database may contain local aliases and cached messages, but neither is uploaded. The relay has no endpoint for profiles, discovery, contacts, groups, or analytics.
 
+## Product-state boundary
+
+`docs/state/` is the normative product-state blueprint. UI reports only local conditions until mutual rendezvous and authenticated session establishment; a saved ID is not a request or remote lookup. The application has explicit locked, offline, suspicious-clock, and identity-loss states. Identity loss never silently creates a replacement. Conversation block/reset/destroy states are terminal for old session and mailbox authority, and unblocking never restores it. Product navigation and wording are defined in `docs/product/` and ADRs 008–009.
+
 ## Transport boundary
 
 `SecureSession` produces and consumes opaque envelopes; `Transport` only sends, receives, and reports bounded delivery results. It must not choose ciphers, inspect plaintext, derive identities, or alter expiry. This preserves equivalent session guarantees across `InternetTransport`, future `NearbyTransport`, and `ExperimentalMeshTransport`.
