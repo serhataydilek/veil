@@ -29,3 +29,5 @@ Minimal sections are Privacy, Identity, Notifications, Blocked relationships, an
 ## Conversation
 
 Contains a local alias, safety/identity state, text messages, composer, minimal timestamps, and lifecycle actions: verify safety code, rename local alias, block, reset secure relationship, and destroy conversation. It contains no profile image, attachments, camera, microphone, calls, typing, presence, reactions, stickers, GIFs, or link previews. Destructive actions explain their local effect and that a fresh mutual pairing is needed later.
+
+Phase 0.9 specifies the visual realization in `docs/design/`: a single Home list without previews or unread badges in V1, text-only conversation composition, transient Sending only, and neutral local-state copy.

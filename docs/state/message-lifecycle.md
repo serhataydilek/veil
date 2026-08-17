@@ -18,7 +18,7 @@ stateDiagram-v2
   EXPIRED --> [*]
 ```
 
-These are implementation-facing local states, not a peer-observation channel. V1 may show only **Sending** while an outbound item has not reached `RELAY_ACCEPTED`, then **Sent**. Sent means this client received an operational relay acceptance, not that the peer received, opened, or read anything. Recipient-client ACK permits relay deletion and is never shown. If this indicator cannot be implemented without durable extra metadata, V1 may omit it; it must not substitute delivered/read semantics.
+These are implementation-facing local states, not a peer-observation channel. V1 shows **Sending** only while an outbound item has not reached `RELAY_ACCEPTED`, then removes the status. This gives local progress feedback without a persistent receipt-like label. Recipient-client ACK permits relay deletion and is never shown. A future `Sent` label would mean operational relay acceptance only—not that the peer received, opened, or read anything—and requires a new product review.
 
 | Situation | Required behavior |
 |---|---|
