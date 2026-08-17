@@ -5,6 +5,7 @@ package com.veil.app.security
  * This is deliberately not Veil protocol identity state.
  */
 enum class ProtectionStatus {
+    CHECKING,
     NOT_PROVISIONED,
     PROVISIONING,
     READY,

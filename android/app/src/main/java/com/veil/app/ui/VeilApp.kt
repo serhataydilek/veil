@@ -13,8 +13,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
@@ -22,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.veil.app.security.ProtectionStatus
+import com.veil.app.security.LocalProtectionController
 import com.veil.app.security.protectedStateStore
 import com.veil.app.ui.components.EmptyState
 import com.veil.app.ui.components.LocalStatusBanner
@@ -42,14 +45,17 @@ private enum class AppScreen {
 fun VeilApp() {
     var screen by remember { mutableStateOf(AppScreen.WELCOME) }
     val context = LocalContext.current
-    val protectedState = remember { protectedStateStore(context) }
-    var protectionStatus by remember { mutableStateOf(protectedState.currentStatus()) }
+    val protectionController = remember(context) { LocalProtectionController(protectedStateStore(context)) }
+    val protectionStatus by protectionController.status.collectAsState()
+    DisposableEffect(protectionController) {
+        onDispose { protectionController.cancel() }
+    }
 
     when (screen) {
         AppScreen.WELCOME -> WelcomeScreen(onContinue = { screen = AppScreen.IDENTITY_NOTICE })
         AppScreen.IDENTITY_NOTICE -> IdentityUnavailableScreen(
             status = protectionStatus,
-            onPrepare = { protectionStatus = protectedState.provision() },
+            onPrepare = protectionController::prepare,
             onContinue = { screen = AppScreen.HOME },
         )
         AppScreen.HOME -> HomeScreen(onNavigate = { screen = it })
@@ -84,6 +90,7 @@ private fun IdentityUnavailableScreen(
                     Text("Secure local storage is not prepared.")
                     Button(onClick = onPrepare) { Text("Prepare secure storage") }
                 }
+                ProtectionStatus.CHECKING -> Text("Checking secure local storage.")
                 ProtectionStatus.PROVISIONING, ProtectionStatus.PURGING -> Text("Preparing secure local storage.")
                 ProtectionStatus.READY -> Text("Secure local storage ready.")
                 ProtectionStatus.KEY_UNAVAILABLE -> Text(
