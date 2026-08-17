@@ -13,13 +13,19 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.veil.app.security.ProtectionStatus
+import com.veil.app.security.LocalProtectionController
+import com.veil.app.security.protectedStateStore
 import com.veil.app.ui.components.EmptyState
 import com.veil.app.ui.components.LocalStatusBanner
 import com.veil.app.ui.components.PrivacyNotice
@@ -38,10 +44,20 @@ private enum class AppScreen {
 @Composable
 fun VeilApp() {
     var screen by remember { mutableStateOf(AppScreen.WELCOME) }
+    val context = LocalContext.current
+    val protectionController = remember(context) { LocalProtectionController(protectedStateStore(context)) }
+    val protectionStatus by protectionController.status.collectAsState()
+    DisposableEffect(protectionController) {
+        onDispose { protectionController.cancel() }
+    }
 
     when (screen) {
         AppScreen.WELCOME -> WelcomeScreen(onContinue = { screen = AppScreen.IDENTITY_NOTICE })
-        AppScreen.IDENTITY_NOTICE -> IdentityUnavailableScreen(onContinue = { screen = AppScreen.HOME })
+        AppScreen.IDENTITY_NOTICE -> IdentityUnavailableScreen(
+            status = protectionStatus,
+            onPrepare = protectionController::prepare,
+            onContinue = { screen = AppScreen.HOME },
+        )
         AppScreen.HOME -> HomeScreen(onNavigate = { screen = it })
         AppScreen.ADD_ID -> AddIdScreen(onBack = { screen = AppScreen.HOME })
         AppScreen.MY_ID -> UnavailableIdScreen(onBack = { screen = AppScreen.HOME })
@@ -61,15 +77,32 @@ private fun WelcomeScreen(onContinue: () -> Unit) {
 }
 
 @Composable
-private fun IdentityUnavailableScreen(onContinue: () -> Unit) {
+private fun IdentityUnavailableScreen(
+    status: ProtectionStatus,
+    onPrepare: () -> Unit,
+    onContinue: () -> Unit,
+) {
     Scaffold { padding ->
         CenteredContent(padding) {
-            Text("Identity functionality unavailable", style = MaterialTheme.typography.headlineSmall)
-            Text(
-                "Veil cannot create an identity until the reviewed secure core is implemented. " +
-                    "No identity has been created.",
-            )
-            PrivacyNotice("This local shell does not create or restore an identity.")
+            Text("Secure local storage", style = MaterialTheme.typography.headlineSmall)
+            when (status) {
+                ProtectionStatus.NOT_PROVISIONED, ProtectionStatus.PURGED -> {
+                    Text("Secure local storage is not prepared.")
+                    Button(onClick = onPrepare) { Text("Prepare secure storage") }
+                }
+                ProtectionStatus.CHECKING -> Text("Checking secure local storage.")
+                ProtectionStatus.PROVISIONING, ProtectionStatus.PURGING -> Text("Preparing secure local storage.")
+                ProtectionStatus.READY -> Text("Secure local storage ready.")
+                ProtectionStatus.KEY_UNAVAILABLE -> Text(
+                    "Protected local state is unavailable. It has not been reset.",
+                )
+                ProtectionStatus.CORRUPT_OR_UNREADABLE -> Text(
+                    "Protected local state is unreadable. It has not been reset.",
+                )
+                ProtectionStatus.ERROR -> Text("Secure local storage could not be prepared.")
+            }
+            Text("Veil identity creation is not implemented yet.")
+            PrivacyNotice("Preparing local storage does not create or restore a Veil identity.")
             Button(onClick = onContinue) { Text("Continue to local shell") }
         }
     }
