@@ -35,7 +35,7 @@ Local storage is separated into Keystore-protected secrets and an encrypted data
 
 `SecureSession` produces and consumes opaque envelopes; `Transport` only sends, receives, and reports bounded delivery results. It must not choose ciphers, inspect plaintext, derive identities, or alter expiry. This preserves equivalent session guarantees across `InternetTransport`, future `NearbyTransport`, and `ExperimentalMeshTransport`.
 
-Public contact capabilities and session routing are distinct: an opaque, unlinkable contact capability is used only for mutual rendezvous. A completed session routes through a random mailbox epoch handle. Authenticated rotation creates a fresh epoch with bounded overlap; the relay deletes old routing state and does not retain a mailbox-history chain. See the Phase 0.5 ADRs for the decision boundaries.
+Public contact capabilities and session routing are distinct: an opaque, unlinkable contact capability is used only for mutual rendezvous. The prior deterministic rendezvous representation is blocked because a relay can enumerate its live-capability corpus; no rendezvous construction is approved until review selects one that prevents that pre-match recovery. A completed session routes through a random mailbox epoch handle. Authenticated rotation creates a fresh epoch with bounded overlap; this reduces retained correlation but does not eliminate relay or push-token linkability.
 
 ## Never sent to the server
 

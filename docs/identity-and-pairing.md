@@ -14,9 +14,9 @@ These are policy values, not crypto parameters: they can change in a versioned p
 
 ## Conceptual rendezvous (requires review)
 
-Each party independently proves possession of its own valid capability and submits a fresh pairing intent represented by an opaque symmetric tag calculated from its own and the peer capability. The relay must reveal no outcome to either unilateral submitter. Only a matching, expiry-valid pair of complementary intents causes each device to receive the other's encrypted ephemeral pairing material. A submitted intent is authenticated, expiry/version-bound, and not a statement that an arbitrary ID exists.
+Each party must independently prove possession of its own valid capability and submit a pairing intent. The relay must reveal no outcome to either unilateral submitter. Only a matching, expiry-valid pair of complementary intents may cause each device to receive the other's encrypted ephemeral pairing material. A submitted intent is authenticated, expiry/version-bound, and not a statement that an arbitrary ID exists.
 
-This is deliberately not a production protocol specification. V1's capability-pair tag candidate uses only established primitives but requires external cryptographic review of its composition, canonicalization, replay handling, and privacy properties. A simple server lookup is insufficient because it enables probing and relationship mapping. A private/OPRF rendezvous may be reconsidered only with measurable benefit and review.
+This is deliberately not a production protocol specification. The former deterministic capability-pair tag is rejected because a relay with the live-capability corpus can enumerate the peer before match. A simple server lookup is likewise insufficient. V1 mutual rendezvous is blocked until a reviewed construction prevents this pre-match recovery while preserving uniform unilateral behavior and abuse resistance.
 
 On success, each client receives the peer's ephemeral pairing material and starts an authenticated secure-session handshake; only then are stable peer identity materials revealed and a safety code available. Thereafter public IDs are unused for routing. Routing uses random mailbox epochs, negotiated by authenticated control traffic with bounded overlap and replacement on reset/destroy; it reduces rather than eliminates relay correlation.
 

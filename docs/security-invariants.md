@@ -17,5 +17,10 @@
 15. Logs, diagnostics, notifications, and crashes contain no plaintext, keys, IDs, aliases, tokens, or mailbox handles.
 16. Blocking/reset/destruction prevents old session or mailbox state from silently reactivating; new contact requires fresh mutual pairing.
 17. Only a deliberate user report can disclose selected decrypted content.
+18. A rendezvous representation must never be described as relay-opaque when a relay with the live-capability corpus can recover a peer by candidate enumeration.
+19. Rotating contact IDs and mailbox epochs do not by themselves prevent device-level linkability through push infrastructure.
+20. Unblocking never restores a previous secure session, mailbox epoch, or connection.
+21. A reset or destroyed relationship can be recreated only through fresh mutual pairing using current IDs.
+22. No metadata-minimization claim may imply elimination of timing, relay, provider, or device-level correlation unless the architecture actually provides it.
 
 Future tests must include property/state-machine tests for expiry/reset/replay, protocol vectors and downgrade tests, relay leak/retention integration tests, logging redaction tests, database/WAL restart tests, and adversarial rendezvous/enumeration testing.

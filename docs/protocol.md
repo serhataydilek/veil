@@ -5,7 +5,7 @@ No proprietary cryptography or final packet encoding is specified here. All fiel
 | Layer | responsibility | protection requirement |
 |---|---|---|
 | Identity | hidden device identity and post-match peer authentication | private key local; stable public material is not in a contact ID; key changes explicit |
-| Rendezvous | mutually matching pairing intents | expiry, anti-probing, opaque symmetric tag candidate, no unilateral result |
+| Rendezvous | mutually matching pairing intents | expiry, anti-probing, no unilateral result; construction BLOCKED after relay enumeration finding |
 | Secure Session | one-to-one key agreement and ratchet | authenticated encryption, forward secrecy, post-compromise security |
 | Message Envelope | opaque routing/padding container | version, mailbox, expiry, sequence/message id authenticated |
 | Delivery | bounded relay queue and acknowledgement | authenticated ACK; idempotent, no read semantics |

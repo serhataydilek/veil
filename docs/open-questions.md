@@ -3,11 +3,12 @@
 ## BLOCKER
 
 - **Concrete one-to-one library approval:** the Signal-style protocol direction is selected, but legal distribution, upstream support posture, API/persistence fit, maintenance, and independent-review gates must select a library; no custom ratchet is permitted.
-- **Mutual rendezvous security review:** the capability-pair V1 candidate is selected architecturally, but its complete composition and privacy properties require external cryptographic review before implementation.
+- **Final mutual-rendezvous construction:** the symmetric capability-pair tag was rejected because a relay can enumerate its live-capability corpus. Select and externally review a deployable construction that prevents pre-match target recovery by any single relay role.
 
 ## IMPORTANT
 
 - Capability issuance/revocation authentication and rate limiting/Sybil resistance without durable personal identifiers; assess accessibility and privacy cost of each option.
+- Push metadata reduction architecture: assess polling, rotated wake handles, and independently operated separation against their actual correlation and availability costs; V1 knowingly accepts direct token linkability.
 - Identity-key rotation/replacement and safety-code UX; decide whether any legitimate migration is ever supported.
 - Database encryption, Keystore capabilities/fallbacks, backup exclusions, WAL cleanup, screenshots/clipboard/recent-preview policy by Android version.
 - Packet-size buckets, ordering/reordering limit, mailbox rotation thresholds/revocation, ACK failure and crash consistency.
