@@ -164,7 +164,7 @@ private fun SettingsScreen(onBack: () -> Unit) {
             Text("App lock and screen privacy require later platform validation.")
             Text("Notifications are not configured in this local-only foundation.")
             Text("Identity", style = MaterialTheme.typography.titleMedium)
-            Text("Identity creation and recovery are unavailable pending secure-core implementation.")
+            Text("Identity creation requires the secure core. Veil does not provide identity recovery.")
         }
     }
 }

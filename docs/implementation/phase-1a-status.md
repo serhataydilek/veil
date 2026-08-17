@@ -14,6 +14,7 @@
 ## Deferred
 
 - Rust/Kotlin FFI selection; database/storage; trusted expiry enforcement; Android Keystore, app lock, screenshot/clipboard/keyboard controls; QR camera scanning; network/push; backend; all cryptographic implementation.
+- Project licensing: no Veil project license has been selected. `veil-core` is explicitly non-publishable and declares no SPDX license until that decision is made.
 
 ## Build/test commands
 
