@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted as the V1 candidate architecture, conditional on external protocol review before implementation.
+Superseded for security by ADR 007. Retained as historical reasoning; the selected symmetric-hash candidate is unsafe against relay-side live-capability enumeration and must not be implemented.
 
 ## Context
 
@@ -17,16 +17,16 @@ We must prevent online guessing, relay-oracle responses, unsolicited requests, r
 | Option | relay learns | assessment |
 |---|---|---|
 | Direct lookup: submit B's ID | B validity, unilateral interest, likely graph | rejected: immediate oracle and relationship record |
-| Symmetric tag from two high-entropy capabilities | opaque pair tag; a match and timing | chosen V1 candidate; simple and bounded |
+| Symmetric tag from two high-entropy capabilities | relay can enumerate live capabilities with submitted A and recover B before match | rejected by ADR 007 |
 | Blind/private rendezvous / OPRF-like service | potentially less input knowledge | promising but not selected without a reviewed, deployable protocol and abuse design |
 | Generic PSI | set intersection and protocol metadata | not justified for a one-pair, asynchronous mobile workflow |
 | Client-issued capabilities | harder server validation/abuse control | deferred; server-issued opaque capabilities chosen by ADR 001 |
 
 ## Decision
 
-For V1, a client proves possession of its own live server-issued capability and computes an opaque symmetric rendezvous tag from its own capability and the peer capability using a domain-separated standard hash over canonical ordered byte strings. It submits only the tag, a short-lived intent nonce, expiry/version, and an encrypted response blob for a fresh ephemeral pairing public key. The relay validates the submitter's own capability, stores the first intent under the opaque tag until the earliest expiry, and returns one uniform non-oracular result. When the complementary intent arrives, it atomically consumes one-time capabilities if relevant, delivers each encrypted blob to the other party, and deletes the rendezvous record.
+The former V1 candidate had a client prove possession of its own live capability and submit a tag derived from its own and peer capability. It is now rejected: because the relay knows the submitted self capability and can enumerate its live-capability corpus, it can recover the peer in linear corpus time. The tag was not relay-opaque.
 
-This describes composition of standard capabilities, hashes, authenticated credentials, and public-key encryption. It is not a claim that the full construction is already reviewed: canonicalization, tag construction, intent authentication, replay handling, and information released at match require an external cryptographic review and test vectors before implementation.
+An OPRF, PSI, or split-trust component does not automatically solve this. ADR 007 requires a reviewed construction that establishes role separation and prevents a single relay role from obtaining both enumerable candidates and testable match representation.
 
 After match, each client uses the peer's ephemeral pairing material to begin an authenticated secure-session handshake. Only inside that handshake does it receive and authenticate the stable peer identity material; safety-code display follows authentication.
 
@@ -36,7 +36,7 @@ A single valid-looking attempt receives the same response whether no peer exists
 
 ## Privacy consequences
 
-The relay sees a submitter's current self-capability and an opaque tag, and at match it can link the two temporary capabilities and timing for that one event. It does not receive plaintext peer IDs in the request path, stable identities, or a permanent graph by design. This reduces—not eliminates—relationship correlation; IP and timing remain observable.
+The relay sees a submitter's current self-capability and the former tag; it can reconstruct the peer capability from its own live-capability set before match. At match it also links temporary participants and timing. The absence of a plaintext peer-ID field did not provide the claimed privacy.
 
 ## Operational consequences
 
@@ -59,4 +59,4 @@ Oracle indistinguishability tests; reciprocal-match state-machine/property tests
 
 ## Open issues
 
-The V1 candidate resolves the product boundary but remains a **security-review gate**, not a production-ready protocol. Evaluate an established private rendezvous/OPRF construction only if it demonstrably reduces relay knowledge without undermining abuse controls or auditability.
+The final reviewed rendezvous construction is a **BLOCKER**. Evaluate established OPRF/PSI/split-trust components only as part of a design that demonstrably prevents relay corpus enumeration without undermining abuse controls or auditability.
