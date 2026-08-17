@@ -3,6 +3,7 @@ package com.veil.app.security
 import android.content.Context
 import java.io.IOException
 import java.security.GeneralSecurityException
+import java.security.ProviderException
 
 /**
  * Owns only the encrypted provisioning sentinel. It must never be used as a
@@ -15,12 +16,16 @@ internal class ProtectedStateStore(
 ) {
     fun currentStatus(): ProtectionStatus {
         if (!stateFile.exists()) return ProtectionStatus.NOT_PROVISIONED
-        val key = when (val result = keyStore.existingKey()) {
+        val key = when (val result = try {
+            keyStore.existingKey()
+        } catch (_: ProviderException) {
+            return ProtectionStatus.KEY_UNAVAILABLE
+        }) {
             is ExistingKeyResult.Available -> result.key
             ExistingKeyResult.Missing, ExistingKeyResult.Unavailable -> return ProtectionStatus.KEY_UNAVAILABLE
         }
         val encoded = try {
-            stateFile.read()
+            stateFile.read(ProtectedStateFormat.MAX_ENCODED_LENGTH)
         } catch (_: IOException) {
             return ProtectionStatus.CORRUPT_OR_UNREADABLE
         }
@@ -29,20 +34,29 @@ internal class ProtectedStateStore(
             if (cipher.decrypt(key, blob).contentEquals(SENTINEL)) ProtectionStatus.READY else ProtectionStatus.CORRUPT_OR_UNREADABLE
         } catch (_: GeneralSecurityException) {
             ProtectionStatus.CORRUPT_OR_UNREADABLE
+        } catch (_: ProviderException) {
+            ProtectionStatus.CORRUPT_OR_UNREADABLE
         }
     }
 
     /** Provisioning is the only code path permitted to create the local key. */
     fun provision(): ProtectionStatus {
         if (stateFile.exists()) return currentStatus()
-        val key = when (val result = keyStore.provisioningKey()) {
+        val key = when (val result = try {
+            keyStore.provisioningKey()
+        } catch (_: ProviderException) {
+            return ProtectionStatus.ERROR
+        }) {
             is ExistingKeyResult.Available -> result.key
             ExistingKeyResult.Missing, ExistingKeyResult.Unavailable -> return ProtectionStatus.ERROR
         }
         val bytes = try {
             val blob = cipher.encrypt(key, SENTINEL)
+            if (blob.iv.size != ProtectedStateFormat.IV_LENGTH) return ProtectionStatus.ERROR
             ProtectedStateFormat.encode(blob)
         } catch (_: GeneralSecurityException) {
+            return ProtectionStatus.ERROR
+        } catch (_: ProviderException) {
             return ProtectionStatus.ERROR
         }
         if (!stateFile.write(bytes)) return ProtectionStatus.ERROR

@@ -6,6 +6,8 @@ import android.security.keystore.KeyInfo
 import android.security.keystore.KeyProperties
 import java.security.GeneralSecurityException
 import java.security.KeyStore
+import java.security.ProviderException
+import java.io.IOException
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.SecretKeyFactory
@@ -39,6 +41,10 @@ internal class AndroidLocalProtectionKeyStore(private val alias: String = DEFAUL
         ExistingKeyResult.Available(key)
     } catch (_: GeneralSecurityException) {
         ExistingKeyResult.Unavailable
+    } catch (_: ProviderException) {
+        ExistingKeyResult.Unavailable
+    } catch (_: IOException) {
+        ExistingKeyResult.Unavailable
     }
 
     override fun provisioningKey(): ExistingKeyResult = when (val existing = existingKey()) {
@@ -57,6 +63,10 @@ internal class AndroidLocalProtectionKeyStore(private val alias: String = DEFAUL
             ExistingKeyResult.Available(generator.apply { init(specification) }.generateKey())
         } catch (_: GeneralSecurityException) {
             ExistingKeyResult.Unavailable
+        } catch (_: ProviderException) {
+            ExistingKeyResult.Unavailable
+        } catch (_: IOException) {
+            ExistingKeyResult.Unavailable
         }
     }
 
@@ -65,6 +75,10 @@ internal class AndroidLocalProtectionKeyStore(private val alias: String = DEFAUL
         if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
         !keyStore.containsAlias(alias)
     } catch (_: GeneralSecurityException) {
+        false
+    } catch (_: ProviderException) {
+        false
+    } catch (_: IOException) {
         false
     }
 
@@ -86,6 +100,10 @@ internal class AndroidLocalProtectionKeyStore(private val alias: String = DEFAUL
                 ProtectionSecurityLevel.SOFTWARE
             }
         } catch (_: GeneralSecurityException) {
+            ProtectionSecurityLevel.UNKNOWN
+        } catch (_: ProviderException) {
+            ProtectionSecurityLevel.UNKNOWN
+        } catch (_: IOException) {
             ProtectionSecurityLevel.UNKNOWN
         }
     }
