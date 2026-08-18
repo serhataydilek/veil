@@ -19,3 +19,8 @@ internal class ThrowingCoreNativeApi : CoreNativeApi {
     override fun bridgeContractVersion(): UInt = error("native binding failed")
     override fun corePolicySnapshot(): NativeCorePolicySnapshot = error("native binding failed")
 }
+
+internal class LinkageFailingCoreNativeApi : CoreNativeApi {
+    override fun bridgeContractVersion(): UInt = throw UnsatisfiedLinkError("libveil_ffi")
+    override fun corePolicySnapshot(): NativeCorePolicySnapshot = throw UnsatisfiedLinkError("libveil_ffi")
+}

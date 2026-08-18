@@ -47,6 +47,18 @@ class RustCoreBridgeTest {
         val bridge = RustCoreBridge(ThrowingCoreNativeApi())
         val loaded = bridge.load()
         assertEquals(CoreBridgeStatus.UNAVAILABLE, loaded.status)
+        assertNull(loaded.contractVersion)
+        assertNull(loaded.maxMessageAvailabilitySeconds)
+        assertNull(loaded.rendezvousStatus)
+        assertNull(loaded.secureSessionStatus)
+    }
+
+    @Test
+    fun linkageError_isUnavailableWithoutPolicySnapshot() {
+        val bridge = RustCoreBridge(LinkageFailingCoreNativeApi())
+        val loaded = bridge.load()
+        assertEquals(CoreBridgeStatus.UNAVAILABLE, loaded.status)
+        assertNull(loaded.contractVersion)
         assertNull(loaded.maxMessageAvailabilitySeconds)
         assertNull(loaded.rendezvousStatus)
         assertNull(loaded.secureSessionStatus)
