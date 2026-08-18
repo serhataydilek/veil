@@ -17,4 +17,4 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all
 ```
 
-See [`docs/implementation/phase-1a-status.md`](docs/implementation/phase-1a-status.md) for implemented, blocked, and deferred work.
+See [`docs/implementation/phase-1a-status.md`](docs/implementation/phase-1a-status.md), [`docs/implementation/phase-1b-status.md`](docs/implementation/phase-1b-status.md), and [`docs/implementation/phase-1c-status.md`](docs/implementation/phase-1c-status.md) for implemented, blocked, and deferred work.

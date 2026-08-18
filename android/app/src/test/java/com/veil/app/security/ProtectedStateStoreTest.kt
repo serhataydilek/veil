@@ -1,9 +1,7 @@
 package com.veil.app.security
 
-import java.io.IOException
 import java.security.ProviderException
 import java.util.concurrent.TimeUnit
-import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -231,71 +229,59 @@ class ProtectedStateStoreTest {
         assertEquals("sentinel", cipher.decrypt(key, first).decodeToString())
     }
 
-    private fun fixture(): Fixture {
-        val keys = TestLocalProtectionKeyStore()
-        val file = InMemoryProtectedStateFile()
-        return Fixture(ProtectedStateStore(keys, file, AesGcmProtectedBlobCipher()), keys, file)
+    @Test
+    fun phase1bSentinelMigratesAtomicallyToDisabledAppLock() {
+        val fixture = fixture()
+        writeLegacySentinel(fixture)
+
+        assertTrue(fixture.store.migrateLegacyIfPresent())
+        val loaded = fixture.store.load()
+        assertEquals(ProtectionStatus.READY, loaded.status)
+        assertEquals(false, loaded.payload?.fromLegacy)
+        assertEquals(false, loaded.payload?.appLockEnabled)
+        assertEquals(
+            ProtectedLocalPayloadCodec.encode(false).toList(),
+            AesGcmProtectedBlobCipher().decrypt(
+                (fixture.keys.existingKey() as ExistingKeyResult.Available).key,
+                ProtectedStateFormat.decode(fixture.file.contents!!)!!,
+            ).toList(),
+        )
     }
 
-    private fun generatedKey(): SecretKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
+    @Test
+    fun failedLegacyMigrationPreservesPreviousValidState() {
+        val fixture = fixture()
+        writeLegacySentinel(fixture)
+        val previous = fixture.file.contents!!.copyOf()
+        fixture.file.failWrites = true
 
-    private data class Fixture(
-        val store: ProtectedStateStore,
-        val keys: TestLocalProtectionKeyStore,
-        val file: InMemoryProtectedStateFile,
-    )
-}
-
-private class TestLocalProtectionKeyStore : LocalProtectionKeyStore {
-    private var key: SecretKey? = null
-    var provisioningRequested = false
-
-    override fun existingKey(): ExistingKeyResult = key?.let { ExistingKeyResult.Available(it) } ?: ExistingKeyResult.Missing
-
-    var provisioningCalls = 0
-
-    override fun provisioningKey(): ExistingKeyResult {
-        provisioningCalls += 1
-        provisioningRequested = true
-        val current = key ?: KeyGenerator.getInstance("AES").apply { init(256) }.generateKey().also { key = it }
-        return ExistingKeyResult.Available(current)
+        assertFalse(fixture.store.migrateLegacyIfPresent())
+        assertEquals(previous.toList(), fixture.file.contents?.toList())
+        val loaded = fixture.store.load()
+        assertEquals(ProtectionStatus.READY, loaded.status)
+        assertEquals(true, loaded.payload?.fromLegacy)
+        assertEquals(false, loaded.payload?.appLockEnabled)
     }
 
-    override fun deleteKey(): Boolean {
-        key = null
-        return true
+    @Test
+    fun unsupportedInnerPayloadVersionFailsClosed() {
+        val fixture = fixture()
+        fixture.store.provision()
+        val key = (fixture.keys.existingKey() as ExistingKeyResult.Available).key
+        val future = ProtectedLocalPayloadCodec.encode(false).copyOf().also { it[4] = 2 }
+        fixture.file.contents = ProtectedStateFormat.encode(AesGcmProtectedBlobCipher().encrypt(key, future))
+
+        assertEquals(ProtectionStatus.CORRUPT_OR_UNREADABLE, fixture.store.currentStatus())
+        assertEquals(null, fixture.store.load().payload)
     }
 
-    override fun securityLevel(): ProtectionSecurityLevel = ProtectionSecurityLevel.SOFTWARE
-
-    fun makeMissing() {
-        key = null
-        provisioningRequested = false
-    }
-}
-
-private class InMemoryProtectedStateFile : ProtectedStateFile {
-    var contents: ByteArray? = null
-    var failWrites = false
-    var failDeletes = false
-
-    override fun exists(): Boolean = contents != null
-    var lastMaximumLength: Int? = null
-    var onRead: (() -> Unit)? = null
-    override fun read(maximumLength: Int): ByteArray {
-        lastMaximumLength = maximumLength
-        onRead?.invoke()
-        return contents ?: throw IOException("missing")
-    }
-    override fun write(bytes: ByteArray): Boolean {
-        if (failWrites) return false
-        contents = bytes.copyOf()
-        return true
+    private fun writeLegacySentinel(fixture: ProtectionFixture) {
+        val key = (fixture.keys.provisioningKey() as ExistingKeyResult.Available).key
+        val blob = AesGcmProtectedBlobCipher().encrypt(key, ProtectedLocalPayloadCodec.LEGACY_SENTINEL)
+        fixture.file.contents = ProtectedStateFormat.encode(blob)
     }
 
-    override fun delete(): Boolean {
-        if (failDeletes) return false
-        contents = null
-        return true
-    }
+    private fun fixture(): ProtectionFixture = protectionFixture()
+
+    private fun generatedKey(): SecretKey = generatedAesKey()
 }

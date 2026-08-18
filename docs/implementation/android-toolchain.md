@@ -11,6 +11,8 @@
 | compile SDK / target SDK | 36 / 36 |
 | min SDK | 26 |
 | Java toolchain | JDK 17 minimum; local verification uses JDK 25 |
+| AndroidX Biometric | 1.1.0 |
+| AndroidX Lifecycle Process / ViewModel | 2.10.0, matching the existing lifecycle pin |
 
 Android’s official compatibility table requires Gradle 9.5.0 for the AGP 9.3 line; AGP 9.3.1 is the selected stable patch release. Kotlin 2.4.10 is the current stable bug-fix release in the supported 2.4 line ([Android Developers](https://developer.android.com/build/releases/about-agp), [Kotlin releases](https://kotlinlang.org/docs/releases.html)). The Compose BOM is used as Android’s recommended compatible Compose dependency set ([Compose BOM](https://developer.android.com/develop/ui/compose/bom)). API 36 is Android 16; the target is deliberately current stable API rather than an Android 17 preview ([Android 16](https://developer.android.com/about/versions/16)).
 
