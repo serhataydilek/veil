@@ -6,6 +6,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModelProvider
 import com.veil.app.lock.AppPrivacyViewModel
+import com.veil.app.privacy.ScreenPrivacy
 import com.veil.app.security.AndroidAppAuthenticator
 import com.veil.app.ui.VeilApp
 import com.veil.app.ui.theme.VeilTheme
@@ -16,6 +17,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ScreenPrivacy.apply(this)
         privacyViewModel = ViewModelProvider(
             this,
             AppPrivacyViewModel.factory(this),
