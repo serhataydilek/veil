@@ -269,8 +269,15 @@ internal class AppPrivacyController(
 
     private fun stateFromLoad(loaded: ProtectedLoadResult, previous: AppPrivacyViewState): AppPrivacyViewState {
         val payload = loaded.payload
-        val known = loaded.status == ProtectionStatus.READY && payload != null && payload.fromLegacy.not()
-        val enabled = known && payload?.appLockEnabled == true
+        val known: Boolean
+        val enabled: Boolean
+        if (loaded.status == ProtectionStatus.READY && payload != null && !payload.fromLegacy) {
+            known = true
+            enabled = payload.appLockEnabled
+        } else {
+            known = false
+            enabled = false
+        }
         return previous.copy(
             protectionStatus = loaded.status,
             session = sessionAfterLoad(loaded.status, enabled, known),

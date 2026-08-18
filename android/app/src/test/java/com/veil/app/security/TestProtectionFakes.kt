@@ -37,6 +37,7 @@ internal class InMemoryProtectedStateFile : ProtectedStateFile {
     var failDeletes = false
     var lastMaximumLength: Int? = null
     var onRead: (() -> Unit)? = null
+    var onWrite: (() -> Unit)? = null
 
     override fun exists(): Boolean = contents != null
 
@@ -47,6 +48,7 @@ internal class InMemoryProtectedStateFile : ProtectedStateFile {
     }
 
     override fun write(bytes: ByteArray): Boolean {
+        onWrite?.invoke()
         if (failWrites) return false
         contents = bytes.copyOf()
         return true

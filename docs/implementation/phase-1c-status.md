@@ -8,17 +8,17 @@
 - Foreground/background relocking through `ProcessLifecycleOwner`, with authentication-in-progress modeled so the system credential UI does not race-lock.
 - Dedicated locked root UI; normal navigation is not composed while locked.
 - `appLockEnabled` persisted inside the existing Phase 1B VLP1 envelope as a versioned `VLS1` payload.
-- Atomic migration from the Phase 1B sentinel, defaulting App Lock to disabled.
+- Atomic migration from the Phase 1B sentinel, defaulting App Lock to disabled. A failed migration write keeps the legacy ciphertext and reports `MIGRATION_FAILED` instead of known-disabled App Lock.
 - Always-on `FLAG_SECURE` and API 33+ recents screenshot disablement, independent of App Lock.
+- Preference and unlock completion re-evaluate foreground state so an enabled App Lock cannot remain `UNLOCKED` after a real background event.
 
 ## Tested
 
-- JVM tests: 43 passed, 0 failed (`ProtectedStateStoreTest` 21, `AppPrivacyControllerTest` 18, `ProtectedLocalPayloadTest` 3, `SecurityFeatureGateTest` 1). Existing Phase 1B Keystore/encrypted-state tests remain and stayed green.
+- JVM tests: 49 passed, 0 failed (`ProtectedStateStoreTest` 21, `AppPrivacyControllerTest` 24, `ProtectedLocalPayloadTest` 3, `SecurityFeatureGateTest` 1). Existing Phase 1B Keystore/encrypted-state tests remain and stayed green.
 
 ## Instrumentation status
 
-- 12 instrumentation tests are packaged (`assembleAndroidTest` succeeded): 5 existing Phase 1B Keystore tests plus 7 Phase 1C tests covering `FLAG_SECURE`, recents setup, protected preference round-trip, Phase 1B→1C migration, locked initial session, test-authenticator unlock, and background relock.
-- `connectedDebugAndroidTest` was not run: `adb devices` listed no emulator or device. This record does not claim connected-test success.
+- `connectedDebugAndroidTest` passed on `Medium_Phone_API_36.1` (AVD, Android 16): 12 tests, 0 failures/errors (5 Phase 1B Keystore tests plus 7 Phase 1C tests).
 
 ## Deliberately blocked
 
@@ -39,7 +39,7 @@
 
 ## Validation (2026-08-18)
 
-- Android `test` passed with 43 JVM tests.
+- Android `test` passed with 49 JVM tests.
 - Android `assembleDebug`, unsigned `assembleRelease`, `lint`, and `assembleAndroidTest` passed. Lint reported no errors; remaining warnings are the existing target/compile SDK notices.
-- `connectedDebugAndroidTest` was not executed because no emulator or device was attached.
-- Rust source/workspace is unchanged. Local `cargo` for the pinned 1.88.0 toolchain reported `cargo.exe` unavailable, matching the Phase 1B validation note.
+- `connectedDebugAndroidTest` passed on the existing `Medium_Phone_API_36.1` AVD: 12 tests, 0 failures/errors.
+- Rust source/workspace is unchanged.

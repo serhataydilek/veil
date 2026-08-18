@@ -20,13 +20,13 @@ Phase 1C adds optional local UI access control and always-on window privacy. It 
 
 `appLockEnabled` defaults to false and is stored only inside the existing VLP1 AES-GCM envelope. The inner plaintext is a 7-byte `VLS1` payload: schema version, ready marker, and the boolean preference. Unlock status, authentication method, timestamps, and identity data are not persisted.
 
-Phase 1B’s `LOCAL_PROTECTION_READY:1` sentinel is decrypted first, then migrated atomically to `VLS1` with `appLockEnabled = false`. A failed write leaves the previous valid file in place. Unsupported inner versions fail closed as unreadable state. Missing or corrupt protected state remains `KEY_UNAVAILABLE` / `CORRUPT_OR_UNREADABLE` and must not be interpreted as App Lock disabled.
+Phase 1B’s `LOCAL_PROTECTION_READY:1` sentinel is decrypted first, then migrated atomically to `VLS1` with `appLockEnabled = false`. A failed write leaves the previous valid file in place and does **not** treat App Lock as known-disabled or enter `LOCK_NOT_REQUIRED`. The controller reports `MIGRATION_FAILED` / `UNAVAILABLE` until a later retry can complete the write. Unsupported inner versions fail closed as unreadable state. Missing or corrupt protected state remains `KEY_UNAVAILABLE` / `CORRUPT_OR_UNREADABLE` and must not be interpreted as App Lock disabled.
 
 Enabling or disabling the preference authenticates first and reports the new value only after a verified protected-state commit.
 
 ## Session
 
-In-memory states are `EVALUATING`, `LOCK_NOT_REQUIRED`, `LOCKED`, `AUTHENTICATING`, `UNLOCKED`, and `UNAVAILABLE`. `UNLOCKED` is never written to disk, `Bundle`, or `SavedStateHandle`. Process recreation with the preference enabled starts `LOCKED`. `ProcessLifecycleOwner` treats real backgrounding as a lock when the preference is enabled; configuration changes do not. Authentication-in-progress and a pending unlock prevent the system credential UI from immediately relocking a successful result.
+In-memory states are `EVALUATING`, `LOCK_NOT_REQUIRED`, `LOCKED`, `AUTHENTICATING`, `UNLOCKED`, and `UNAVAILABLE`. `UNLOCKED` is never written to disk, `Bundle`, or `SavedStateHandle`. Process recreation with the preference enabled starts `LOCKED`. `ProcessLifecycleOwner` treats real backgrounding as a lock when the preference is enabled; configuration changes do not. Authentication-in-progress and a pending unlock prevent the system credential UI from immediately relocking a successful result. After every authentication or protected-state write completes, the session is re-derived from whether protected state is valid, whether App Lock is enabled, and whether the process is still in the foreground. Enabling App Lock while the process is backgrounded ends `LOCKED`. A failed disable while backgrounded cannot leave an enabled session `UNLOCKED`.
 
 The locked root is a dedicated screen (`Veil` / `Veil is locked.` / `Unlock`). Normal navigation is not composed behind an overlay.
 

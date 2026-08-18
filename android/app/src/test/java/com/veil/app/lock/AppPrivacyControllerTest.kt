@@ -10,9 +10,15 @@ import com.veil.app.security.ProtectedStateFormat
 import com.veil.app.security.ProtectionFixture
 import com.veil.app.security.ProtectionStatus
 import com.veil.app.security.protectionFixture
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -289,6 +295,156 @@ class AppPrivacyControllerTest {
         assertEquals(0, authenticator.authenticateCalls)
         assertFalse(controller.state.value.appLockEnabled)
         assertEquals(AppLockError.AUTH_NOT_CONFIGURED, controller.state.value.error)
+    }
+
+    @Test
+    fun enableAppLockWhileBackgroundedDuringPersistEndsLocked() {
+        val fixture = readyFixture()
+        lateinit var session: AppLockSessionState
+        var enabled = false
+        runWithPausedWrite(fixture, afterWrite = {
+            session = it.state.value.session
+            enabled = it.state.value.appLockEnabled
+        }) { controller, awaitWrite, releaseWrite ->
+            controller.onProcessForeground()
+            val authenticator = FakeAppAuthenticator(completeImmediately = false)
+            controller.setAppLockEnabled(true, authenticator)
+            authenticator.complete(AuthenticationResult.SUCCESS)
+            awaitWrite()
+            controller.onProcessBackground()
+            releaseWrite()
+        }
+        assertTrue(enabled)
+        assertEquals(AppLockSessionState.LOCKED, session)
+        assertEquals(true, fixture.store.load().payload?.appLockEnabled)
+    }
+
+    @Test
+    fun disableAppLockPersistFailureWhileBackgroundedEndsLocked() {
+        val fixture = readyFixture()
+        assertTrue(fixture.store.writeAppLockEnabled(true))
+        fixture.file.failWrites = true
+        lateinit var session: AppLockSessionState
+        var enabled = false
+        runWithPausedWrite(fixture, afterWrite = {
+            session = it.state.value.session
+            enabled = it.state.value.appLockEnabled
+        }) { controller, awaitWrite, releaseWrite ->
+            controller.onProcessForeground()
+            controller.requestUnlock(FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS))
+            assertEquals(AppLockSessionState.UNLOCKED, controller.state.value.session)
+            val authenticator = FakeAppAuthenticator(completeImmediately = false)
+            controller.setAppLockEnabled(false, authenticator)
+            authenticator.complete(AuthenticationResult.SUCCESS)
+            awaitWrite()
+            controller.onProcessBackground()
+            releaseWrite()
+        }
+        assertTrue(enabled)
+        assertEquals(AppLockSessionState.LOCKED, session)
+        assertEquals(true, fixture.store.load().payload?.appLockEnabled)
+    }
+
+    @Test
+    fun enableAppLockWhileForegroundEndsUnlocked() {
+        val fixture = readyFixture()
+        val controller = controller(fixture)
+        controller.onProcessForeground()
+
+        controller.setAppLockEnabled(true, FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS))
+
+        assertTrue(controller.state.value.appLockEnabled)
+        assertEquals(AppLockSessionState.UNLOCKED, controller.state.value.session)
+    }
+
+    @Test
+    fun disableAppLockWhileForegroundClearsLock() {
+        val fixture = readyFixture()
+        assertTrue(fixture.store.writeAppLockEnabled(true))
+        val controller = controller(fixture)
+        controller.onProcessForeground()
+        controller.requestUnlock(FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS))
+
+        controller.setAppLockEnabled(false, FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS))
+
+        assertFalse(controller.state.value.appLockEnabled)
+        assertEquals(AppLockSessionState.LOCK_NOT_REQUIRED, controller.state.value.session)
+    }
+
+    @Test
+    fun cancelledDisableWhileBackgroundedEndsLocked() {
+        val fixture = readyFixture()
+        assertTrue(fixture.store.writeAppLockEnabled(true))
+        val controller = controller(fixture)
+        controller.onProcessForeground()
+        controller.requestUnlock(FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS))
+        val authenticator = FakeAppAuthenticator(completeImmediately = false)
+
+        controller.setAppLockEnabled(false, authenticator)
+        controller.onProcessBackground()
+        authenticator.complete(AuthenticationResult.CANCELLED)
+
+        assertTrue(controller.state.value.appLockEnabled)
+        assertEquals(AppLockSessionState.LOCKED, controller.state.value.session)
+        assertEquals(true, fixture.store.load().payload?.appLockEnabled)
+    }
+
+    @Test
+    fun failedAuthWhileBackgroundedWithLockEnabledEndsLocked() {
+        val fixture = readyFixture()
+        assertTrue(fixture.store.writeAppLockEnabled(true))
+        val controller = controller(fixture)
+        controller.onProcessForeground()
+        controller.requestUnlock(FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS))
+        val authenticator = FakeAppAuthenticator(completeImmediately = false)
+
+        controller.setAppLockEnabled(false, authenticator)
+        controller.onProcessBackground()
+        authenticator.complete(AuthenticationResult.ERROR)
+
+        assertTrue(controller.state.value.appLockEnabled)
+        assertEquals(AppLockSessionState.LOCKED, controller.state.value.session)
+    }
+
+    private fun runWithPausedWrite(
+        fixture: ProtectionFixture,
+        afterWrite: (AppPrivacyController) -> Unit = {},
+        body: (AppPrivacyController, () -> Unit, () -> Unit) -> Unit,
+    ) {
+        val enteredWrite = CountDownLatch(1)
+        val releaseWrite = CountDownLatch(1)
+        fixture.file.onWrite = {
+            enteredWrite.countDown()
+            assertTrue(releaseWrite.await(3, TimeUnit.SECONDS))
+        }
+        val executor = Executors.newSingleThreadExecutor()
+        val loaded = CountDownLatch(1)
+        fixture.file.onRead = { loaded.countDown() }
+        try {
+            val created = AppPrivacyController(
+                fixture.store,
+                workerDispatcher = executor.asCoroutineDispatcher(),
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+            )
+            assertTrue(loaded.await(3, TimeUnit.SECONDS))
+            runBlocking {
+                created.state.first { it.session != AppLockSessionState.EVALUATING && it.protectionStatus != ProtectionStatus.CHECKING }
+            }
+            fixture.file.onRead = null
+            body(
+                created,
+                { assertTrue(enteredWrite.await(3, TimeUnit.SECONDS)) },
+                { releaseWrite.countDown() },
+            )
+            executor.shutdown()
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
+            afterWrite(created)
+            created.cancel()
+        } finally {
+            fixture.file.onRead = null
+            releaseWrite.countDown()
+            executor.shutdownNow()
+        }
     }
 
     private fun readyFixture(): ProtectionFixture = protectionFixture().also {

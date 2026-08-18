@@ -25,6 +25,8 @@ Phase 1C needs an optional app lock and always-on capture limits before identity
 - Screen privacy does not depend on App Lock. Recents/screenshot protection remains active when App Lock is disabled.
 - App Lock is not protocol identity authentication, server login, recovery, or a replacement for Android Keystore.
 - Corrupt or missing protected state remains a higher-priority fail-closed condition. Inability to read `appLockEnabled` must not be treated as App Lock disabled.
+- Failed Phase 1B→1C payload migration retains the valid legacy ciphertext for retry and does not treat App Lock as known-disabled.
+- After authentication or protected-state persistence completes, lock session is re-evaluated against current foreground state. Enabling while backgrounded ends locked. A failed disable while backgrounded cannot leave an enabled session unlocked.
 
 ## Consequences
 
