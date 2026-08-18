@@ -23,6 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.veil.app.core.CoreBridgeStatus
+import com.veil.app.core.RustCoreBridge
 import com.veil.app.lock.AppLockError
 import com.veil.app.lock.AppLockSessionState
 import com.veil.app.lock.AppPrivacyController
@@ -264,6 +266,7 @@ private fun SettingsScreen(
             state.authenticatorAvailability == AuthenticatorAvailability.AVAILABLE ||
                 state.appLockEnabled
             )
+    val coreSnapshot = remember { RustCoreBridge().load() }
     Scaffold(topBar = { VeilTopBar(title = "Settings", onBack = onBack) }) { padding ->
         Column(
             modifier = Modifier
@@ -301,6 +304,10 @@ private fun SettingsScreen(
             Text("Notifications are not configured in this local-only foundation.")
             Text("Identity", style = MaterialTheme.typography.titleMedium)
             Text("Identity creation requires the secure core. Veil does not provide identity recovery.")
+            if (coreSnapshot.status == CoreBridgeStatus.AVAILABLE) {
+                Text("Rust core connected")
+            }
+            Text("Secure messaging features remain unavailable pending review")
         }
     }
 }
