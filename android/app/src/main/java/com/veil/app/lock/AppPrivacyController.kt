@@ -196,31 +196,62 @@ internal class AppPrivacyController(
 
     private fun handlePreferenceResult(enabled: Boolean, result: AuthenticationResult) {
         if (result != AuthenticationResult.SUCCESS) {
-            authInFlight.set(false)
-            mutableState.value = mutableState.value.copy(
-                preferenceChangeInProgress = false,
+            finishPreferenceAttempt(
+                enabled = mutableState.value.appLockEnabled,
                 error = result.toAppLockError(),
+                justAuthenticated = false,
             )
             return
         }
         scope.launch {
             val persisted = withContext(workerDispatcher) { protectedState.writeAppLockEnabled(enabled) }
-            authInFlight.set(false)
-            val current = mutableState.value
             if (!persisted) {
-                mutableState.value = current.copy(
-                    preferenceChangeInProgress = false,
+                finishPreferenceAttempt(
+                    enabled = mutableState.value.appLockEnabled,
                     error = AppLockError.PROTECTED_STATE_UNAVAILABLE,
+                    justAuthenticated = true,
                 )
                 return@launch
             }
-            mutableState.value = current.copy(
-                appLockEnabled = enabled,
-                appLockPreferenceKnown = true,
-                preferenceChangeInProgress = false,
-                session = if (enabled) AppLockSessionState.UNLOCKED else AppLockSessionState.LOCK_NOT_REQUIRED,
+            finishPreferenceAttempt(
+                enabled = enabled,
                 error = null,
+                justAuthenticated = true,
             )
+        }
+    }
+
+    private fun finishPreferenceAttempt(
+        enabled: Boolean,
+        error: AppLockError?,
+        justAuthenticated: Boolean,
+    ) {
+        authInFlight.set(false)
+        val current = mutableState.value
+        mutableState.value = current.copy(
+            appLockEnabled = enabled,
+            preferenceChangeInProgress = false,
+            session = sessionFromFacts(
+                enabled = enabled,
+                justAuthenticated = justAuthenticated,
+                currentSession = current.session,
+            ),
+            error = error,
+        )
+    }
+
+    private fun sessionFromFacts(
+        enabled: Boolean,
+        justAuthenticated: Boolean,
+        currentSession: AppLockSessionState,
+    ): AppLockSessionState {
+        if (!enabled) return AppLockSessionState.LOCK_NOT_REQUIRED
+        if (!processInForeground) return AppLockSessionState.LOCKED
+        if (justAuthenticated) return AppLockSessionState.UNLOCKED
+        return if (currentSession == AppLockSessionState.UNLOCKED) {
+            AppLockSessionState.UNLOCKED
+        } else {
+            AppLockSessionState.LOCKED
         }
     }
 

@@ -37,6 +37,7 @@ class AppPrivacyControllerTest {
     fun enablingRequiresAuthSuccess() {
         val fixture = readyFixture()
         val controller = controller(fixture)
+        controller.onProcessForeground()
         val authenticator = FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS)
 
         controller.setAppLockEnabled(true, authenticator)
