@@ -8,35 +8,35 @@ class RustCoreBridge internal constructor(
 
     fun load(): CoreBridgeSnapshot {
         val api = nativeApi ?: return unavailable()
-        return try {
-            val version = api.bridgeContractVersion()
-            if (version != expectedContractVersion) {
-                return CoreBridgeSnapshot(
-                    status = CoreBridgeStatus.INCOMPATIBLE,
-                    contractVersion = version,
-                )
-            }
-            val native = api.corePolicySnapshot()
-            if (native.bridgeContractVersion != expectedContractVersion) {
-                return CoreBridgeSnapshot(
-                    status = CoreBridgeStatus.INCOMPATIBLE,
-                    contractVersion = native.bridgeContractVersion,
-                )
-            }
-            val rendezvous = native.rendezvousStatus.toCore() ?: return unavailable()
-            val session = native.secureSessionStatus.toCore() ?: return unavailable()
-            val maxAvailability = native.maxMessageAvailabilitySeconds.toAvailabilitySeconds()
-                ?: return unavailable()
-            CoreBridgeSnapshot(
-                status = CoreBridgeStatus.AVAILABLE,
-                contractVersion = native.bridgeContractVersion,
-                maxMessageAvailabilitySeconds = maxAvailability,
-                rendezvousStatus = rendezvous,
-                secureSessionStatus = session,
+        return catchExpectedNativeFailure { readSnapshot(api) } ?: unavailable()
+    }
+
+    private fun readSnapshot(api: CoreNativeApi): CoreBridgeSnapshot {
+        val version = api.bridgeContractVersion()
+        if (version != expectedContractVersion) {
+            return CoreBridgeSnapshot(
+                status = CoreBridgeStatus.INCOMPATIBLE,
+                contractVersion = version,
             )
-        } catch (_: Throwable) {
-            unavailable()
         }
+        val native = api.corePolicySnapshot()
+        if (native.bridgeContractVersion != expectedContractVersion) {
+            return CoreBridgeSnapshot(
+                status = CoreBridgeStatus.INCOMPATIBLE,
+                contractVersion = native.bridgeContractVersion,
+            )
+        }
+        val rendezvous = native.rendezvousStatus.toCore() ?: return unavailable()
+        val session = native.secureSessionStatus.toCore() ?: return unavailable()
+        val maxAvailability = native.maxMessageAvailabilitySeconds.toAvailabilitySeconds()
+            ?: return unavailable()
+        return CoreBridgeSnapshot(
+            status = CoreBridgeStatus.AVAILABLE,
+            contractVersion = native.bridgeContractVersion,
+            maxMessageAvailabilitySeconds = maxAvailability,
+            rendezvousStatus = rendezvous,
+            secureSessionStatus = session,
+        )
     }
 
     private fun unavailable(): CoreBridgeSnapshot =

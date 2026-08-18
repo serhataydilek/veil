@@ -15,11 +15,9 @@ internal class ProductionCoreNativeApi private constructor() : CoreNativeApi {
 
     companion object {
         fun tryCreate(): CoreNativeApi? =
-            try {
+            catchExpectedNativeFailure {
                 uniffi.veil_ffi.uniffiEnsureInitialized()
                 ProductionCoreNativeApi()
-            } catch (_: Throwable) {
-                null
             }
     }
 }
