@@ -57,8 +57,9 @@ internal class AppPrivacyController(
             mutableState.value = mutableState.value.copy(protectionStatus = ProtectionStatus.PROVISIONING)
             try {
                 val status = withContext(workerDispatcher) { protectedState.provision() }
-                val loaded = withContext(workerDispatcher) { protectedState.load() }
-                mutableState.value = stateFromLoad(loaded.copy(status = status), mutableState.value)
+                val loaded = withContext(workerDispatcher) { loadAndMigrate() }
+                val result = if (status == ProtectionStatus.READY) loaded else loaded.copy(status = status)
+                mutableState.value = stateFromLoad(result, mutableState.value)
             } finally {
                 provisioning.set(false)
             }
@@ -226,7 +227,10 @@ internal class AppPrivacyController(
     private fun loadAndMigrate(): ProtectedLoadResult {
         val initial = protectedState.load()
         if (initial.status == ProtectionStatus.READY && initial.payload?.fromLegacy == true) {
-            protectedState.migrateLegacyIfPresent()
+            val migrated = protectedState.migrateLegacyIfPresent()
+            if (!migrated) {
+                return ProtectedLoadResult(ProtectionStatus.MIGRATION_FAILED, initial.payload)
+            }
             return protectedState.load()
         }
         return initial
@@ -234,15 +238,19 @@ internal class AppPrivacyController(
 
     private fun stateFromLoad(loaded: ProtectedLoadResult, previous: AppPrivacyViewState): AppPrivacyViewState {
         val payload = loaded.payload
-        val known = loaded.status == ProtectionStatus.READY && payload != null
-        val enabled = payload?.appLockEnabled == true
+        val known = loaded.status == ProtectionStatus.READY && payload != null && payload.fromLegacy.not()
+        val enabled = known && payload?.appLockEnabled == true
         return previous.copy(
             protectionStatus = loaded.status,
             session = sessionAfterLoad(loaded.status, enabled, known),
-            appLockEnabled = if (known) enabled else false,
+            appLockEnabled = enabled,
             appLockPreferenceKnown = known,
             preferenceChangeInProgress = false,
-            error = null,
+            error = if (loaded.status == ProtectionStatus.MIGRATION_FAILED) {
+                AppLockError.STATE_UPDATE_FAILED
+            } else {
+                null
+            },
         )
     }
 
@@ -251,8 +259,10 @@ internal class AppPrivacyController(
         enabled: Boolean,
         known: Boolean,
     ): AppLockSessionState = when (status) {
-        ProtectionStatus.KEY_UNAVAILABLE, ProtectionStatus.CORRUPT_OR_UNREADABLE ->
-            AppLockSessionState.UNAVAILABLE
+        ProtectionStatus.KEY_UNAVAILABLE,
+        ProtectionStatus.CORRUPT_OR_UNREADABLE,
+        ProtectionStatus.MIGRATION_FAILED,
+        -> AppLockSessionState.UNAVAILABLE
         ProtectionStatus.CHECKING, ProtectionStatus.PROVISIONING, ProtectionStatus.PURGING ->
             AppLockSessionState.EVALUATING
         ProtectionStatus.READY ->

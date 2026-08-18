@@ -11,6 +11,7 @@ enum class ProtectionStatus {
     READY,
     KEY_UNAVAILABLE,
     CORRUPT_OR_UNREADABLE,
+    MIGRATION_FAILED,
     PURGING,
     PURGED,
     ERROR,

@@ -250,15 +250,29 @@ class AppPrivacyControllerTest {
     fun failedMigrationPreservesPreviousValidStateForController() {
         val fixture = protectionFixture()
         writeLegacySentinel(fixture)
+        val previous = fixture.file.contents!!.copyOf()
         fixture.file.failWrites = true
 
         val controller = controller(fixture)
 
-        assertEquals(ProtectionStatus.READY, controller.state.value.protectionStatus)
+        assertEquals(ProtectionStatus.MIGRATION_FAILED, controller.state.value.protectionStatus)
+        assertEquals(AppLockSessionState.UNAVAILABLE, controller.state.value.session)
+        assertFalse(controller.state.value.appLockPreferenceKnown)
         assertFalse(controller.state.value.appLockEnabled)
-        assertTrue(controller.state.value.appLockPreferenceKnown)
-        assertEquals(AppLockSessionState.LOCK_NOT_REQUIRED, controller.state.value.session)
+        assertEquals(AppLockError.STATE_UPDATE_FAILED, controller.state.value.error)
+        assertNotEquals(AppLockSessionState.LOCK_NOT_REQUIRED, controller.state.value.session)
+        assertEquals(previous.toList(), fixture.file.contents?.toList())
         assertEquals(true, fixture.store.load().payload?.fromLegacy)
+        assertEquals(ProtectionStatus.READY, fixture.store.load().status)
+
+        fixture.file.failWrites = false
+        controller.load()
+
+        assertEquals(ProtectionStatus.READY, controller.state.value.protectionStatus)
+        assertTrue(controller.state.value.appLockPreferenceKnown)
+        assertFalse(controller.state.value.appLockEnabled)
+        assertEquals(AppLockSessionState.LOCK_NOT_REQUIRED, controller.state.value.session)
+        assertEquals(false, fixture.store.load().payload?.fromLegacy)
     }
 
     @Test

@@ -64,9 +64,14 @@ internal fun VeilApp(
             state.protectionStatus == ProtectionStatus.CHECKING -> WaitingScreen()
         state.session == AppLockSessionState.UNAVAILABLE ||
             state.protectionStatus == ProtectionStatus.KEY_UNAVAILABLE ||
-            state.protectionStatus == ProtectionStatus.CORRUPT_OR_UNREADABLE -> IdentityUnavailableScreen(
+            state.protectionStatus == ProtectionStatus.CORRUPT_OR_UNREADABLE ||
+            state.protectionStatus == ProtectionStatus.MIGRATION_FAILED -> IdentityUnavailableScreen(
             status = state.protectionStatus,
-            onPrepare = {},
+            onPrepare = if (state.protectionStatus == ProtectionStatus.MIGRATION_FAILED) {
+                controller::load
+            } else {
+                {}
+            },
             onContinue = {},
             allowContinue = false,
         )
@@ -156,6 +161,10 @@ private fun IdentityUnavailableScreen(
                 ProtectionStatus.CORRUPT_OR_UNREADABLE -> Text(
                     "Protected local state is unreadable. It has not been reset.",
                 )
+                ProtectionStatus.MIGRATION_FAILED -> {
+                    Text("Protected local state could not be updated. Existing data has not been changed.")
+                    Button(onClick = onPrepare) { Text("Try again") }
+                }
                 ProtectionStatus.ERROR -> Text("Secure local storage could not be prepared.")
             }
             Text("Veil identity creation is not implemented yet.")

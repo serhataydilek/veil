@@ -19,6 +19,7 @@ internal enum class AppLockError {
     AUTH_LOCKED_OUT,
     AUTH_FAILED,
     PROTECTED_STATE_UNAVAILABLE,
+    STATE_UPDATE_FAILED,
 }
 
 internal fun AppLockError.userMessage(): String? = when (this) {
@@ -29,6 +30,8 @@ internal fun AppLockError.userMessage(): String? = when (this) {
     AppLockError.AUTH_LOCKED_OUT -> "Too many attempts. Try again later."
     AppLockError.AUTH_FAILED -> "Could not authenticate."
     AppLockError.PROTECTED_STATE_UNAVAILABLE -> "Protected local state is unavailable."
+    AppLockError.STATE_UPDATE_FAILED ->
+        "Protected local state could not be updated. Existing data has not been changed."
 }
 
 internal data class AppPrivacyViewState(
