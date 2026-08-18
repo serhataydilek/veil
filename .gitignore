@@ -7,6 +7,14 @@ android/.externalNativeBuild/
 android/captures/
 android/.kotlin/
 rust/target/
+# Generated UniFFI Kotlin and native libraries must never be committed.
+android/app/src/main/jniLibs/
+android/app/src/main/java/uniffi/
+android/app/src/main/kotlin/uniffi/
+*.so
+*.dll
+*.dylib
+*.pdb
 .idea/
 .vscode/
 *.swp
