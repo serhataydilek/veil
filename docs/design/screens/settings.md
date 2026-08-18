@@ -12,7 +12,7 @@ No account, profile, password, recovery, discovery, media, or social settings ex
 
 ## Lock and notifications
 
-Later implementation uses platform credential/biometric authentication only—no custom password or biometric database. Options may be **Lock immediately** and **Lock after short delay**. On lock, hide conversation content and recent-app preview where the platform permits.
+Later implementation uses platform credential/biometric authentication only—no custom password or biometric database. Phase 1C locks immediately on background when App Lock is enabled; a short delay option remains later. On lock, hide conversation content and recent-app preview where the platform permits.
 
 Ask notification permission contextually, not at first launch: “Veil uses notifications only to tell you that new encrypted data may be available. Notifications never include the sender or message content.” Actions: **Enable notifications** and **Not now**. Veil remains usable without permission.
 

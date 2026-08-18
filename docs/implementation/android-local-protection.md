@@ -12,7 +12,7 @@ The key is AES-256, non-exportable, and authorized only for encryption/decryptio
 
 ## Protected state and format
 
-The only persisted content is the `LOCAL_PROTECTION_READY:1` sentinel. It is stored at `context.noBackupFilesDir/veil-local-state.v1`; existing backup and data-transfer exclusions remain in force. No plaintext companion file is written.
+The only persisted content is a small versioned local-state payload inside the VLP1 envelope, stored at `context.noBackupFilesDir/veil-local-state.v1`. Phase 1B wrote the `LOCAL_PROTECTION_READY:1` sentinel; Phase 1C migrates that sentinel to an inner `VLS1` payload containing a ready marker and `appLockEnabled`. Existing backup and data-transfer exclusions remain in force. No plaintext companion file is written.
 
 The format is big-endian and deliberately bounded:
 

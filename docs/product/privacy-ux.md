@@ -10,7 +10,7 @@ After authenticated pairing, the conversation offers **Verify identity** with a 
 
 ## Lock and screen privacy (implementation intent)
 
-Later Android implementation may use device credential/biometric authentication, with an immediate or short user-selected timeout. It must use platform authentication only and keep no biometric database. Hide recent-app previews and enable Android screenshot protection where appropriate, but clearly state that screenshots, recordings, accessibility software, modified devices, and OS behavior cannot be universally prevented. Clipboard copying is explicit, warns about OS visibility, and is cleared only where the OS allows. Notification history is outside Veil's full control.
+Android App Lock uses device credential/biometric authentication only and keeps no biometric database. There is no user-selected timeout in Phase 1C: when enabled, leaving the foreground relocks. Hide recent-app previews and enable Android screenshot protection where appropriate, but clearly state that screenshots, recordings, accessibility software, modified devices, and OS behavior cannot be universally prevented. Clipboard copying is explicit, warns about OS visibility, and is cleared only where the OS allows. Notification history is outside Veil's full control.
 
 ## Offline and restart
 

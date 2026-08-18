@@ -2,8 +2,8 @@
 
 | Surface | Control level | Direction and limitation |
 |---|---|---|
-| Recent-app preview | Platform-controllable where available | Hide/redact content when locked/backgrounded; validate by Android version. |
-| Screenshots / recording | Partially controllable | Use platform protection where appropriate, but never promise universal prevention. |
+| Recent-app preview | Platform-controllable where available | Phase 1C disables recents screenshots on API 33+ and relies on `FLAG_SECURE` plus lock/background behavior on older APIs. This is not universal. |
+| Screenshots / recording | Partially controllable | Phase 1C always applies `FLAG_SECURE`. Never promise universal prevention. |
 | Clipboard | Partially controllable | Copy is explicit with warning; clear only where OS permits. Other apps/keyboard may observe clipboard under platform rules. |
 | Keyboard suggestions | Partially controllable | Evaluate disabling personalized learning for composer where Android permits; balance usability, IME/version behavior, and validate later. |
 | Accessibility services | Not reliably controllable | Respect user-granted platform access; do not make a false confidentiality claim. |

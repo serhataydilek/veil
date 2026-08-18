@@ -25,7 +25,7 @@
 
 ## Deferred
 
-- Biometric/device-credential app lock, explicit StrongBox request policy, database/storage design, protected identity/session material, migration/recovery policy, and Android device/version matrix validation.
+- Explicit StrongBox request policy, database/storage design, protected identity/session material, migration/recovery policy, and Android device/version matrix validation. App lock and screen privacy moved to Phase 1C.
 
 ## Known limitations
 
