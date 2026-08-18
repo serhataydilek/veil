@@ -20,3 +20,8 @@ data class PurgeResult(
     val complete: Boolean,
     val status: ProtectionStatus,
 )
+
+internal data class ProtectedLoadResult(
+    val status: ProtectionStatus,
+    val payload: ProtectedLocalPayload?,
+)
