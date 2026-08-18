@@ -105,8 +105,8 @@ tasks.register("ensureRustAndroidFfiToolchain") {
         val cargo = findCargo()
         val rustc = findSiblingTool(cargo, "rustc")
         val rustcVersion = runCapture(rustDir, listOf(rustc.absolutePath, "--version"))
-        check(rustcVersion.contains(rustVersion)) {
-            "Pinned Rust $rustVersion is required, found: ${rustcVersion.trim()}"
+        check(matchesExactToolVersion(rustcVersion, "rustc", rustVersion)) {
+            "Pinned rustc $rustVersion is required, found: ${rustcVersion.trim()}"
         }
         val rustup = findSiblingTool(cargo, "rustup")
         runChecked(
@@ -353,7 +353,7 @@ fun hostCdylib(targetDir: File): File {
 
 fun ensureCargoNdk(cargo: File) {
     val versionOutput = runCapture(rustDir, listOf(cargo.absolutePath, "ndk", "--version"))
-    if (versionOutput.contains(cargoNdkVersion)) {
+    if (matchesExactToolVersion(versionOutput, "cargo-ndk", cargoNdkVersion)) {
         return
     }
     runChecked(
@@ -368,9 +368,27 @@ fun ensureCargoNdk(cargo: File) {
         ),
     )
     val installed = runCapture(rustDir, listOf(cargo.absolutePath, "ndk", "--version"))
-    check(installed.contains(cargoNdkVersion)) {
+    check(matchesExactToolVersion(installed, "cargo-ndk", cargoNdkVersion)) {
         "cargo-ndk $cargoNdkVersion is required, found: ${installed.trim()}"
     }
+}
+
+fun matchesExactToolVersion(versionOutput: String, toolName: String, expectedVersion: String): Boolean {
+    return parseToolVersion(versionOutput, toolName) == expectedVersion
+}
+
+// Keep identical to android/app/src/test/java/com/veil/app/core/FfiToolchainVersion.kt
+fun parseToolVersion(versionOutput: String, toolName: String): String? {
+    val prefix = "$toolName "
+    val line = versionOutput.lineSequence()
+        .map { it.trim() }
+        .firstOrNull { it.startsWith(prefix) }
+        ?: return null
+    val token = line.removePrefix(prefix).trim().substringBefore(' ').trim()
+    if (token.isEmpty() || !token.matches(Regex("""\d+(?:\.\d+)+"""))) {
+        return null
+    }
+    return token
 }
 
 fun runChecked(workingDir: File, command: List<String>, env: Map<String, String> = emptyMap()) {

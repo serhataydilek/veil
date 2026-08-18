@@ -4,15 +4,17 @@ This is the Phase 1D implementation note for the selected FFI path. It is not a 
 
 ## Pins
 
-| Component | Version | Purpose |
-|---|---|---|
-| UniFFI | 0.32.0 | Proc-macro FFI definitions and stable Kotlin/JNA bindings |
-| JNA | 5.19.1 | Load `libveil_ffi.so` from generated Kotlin (`net.java.dev.jna:jna:5.19.1@aar`) |
-| Android NDK | 29.0.14206865 | Compile Rust `cdylib` for Android |
-| cargo-ndk | 4.1.2 | Reproducible Android Rust builds and `jniLibs` layout |
-| Rust | 1.88.0 | Existing workspace toolchain |
-| Kotlin | 2.4.10 | Existing Android toolchain |
-| minSdk / native API | 26 | Android 8.0+ devices and native minimum |
+| Component | Version | Authoritative location | Purpose |
+|---|---|---|---|
+| UniFFI | 0.32.0 | `rust/crates/veil-ffi/Cargo.toml`, `rust/tools/veil-uniffi-bindgen/Cargo.toml` | Proc-macro FFI definitions and stable Kotlin/JNA bindings |
+| JNA | 5.19.1 | `android/gradle/libs.versions.toml` | Load `libveil_ffi.so` from generated Kotlin (`net.java.dev.jna:jna:5.19.1@aar`) |
+| Android NDK | 29.0.14206865 | `android/gradle/libs.versions.toml`, consumed as `android.ndkVersion` | Compile Rust `cdylib` for Android |
+| cargo-ndk | 4.1.2 | `android/gradle.properties` `veil.cargoNdkVersion` | Reproducible Android Rust builds and `jniLibs` layout |
+| Rust | 1.88.0 | `rust/rust-toolchain.toml`; Gradle `veil.rustVersion` must stay aligned | Existing workspace toolchain |
+| Kotlin | 2.4.10 | `android/gradle/libs.versions.toml` | Existing Android toolchain |
+| minSdk / native API | 26 | `minSdk` and `veil.nativeApiLevel` | Android 8.0+ devices and native minimum |
+
+Do not duplicate unused pins in `android/gradle.properties`. Gradle toolchain verification parses `rustc --version` and `cargo ndk --version` and requires the exact version token (`rustc 1.88.0`, `cargo-ndk 4.1.2`). Nearby versions such as `4.1.20`, `14.1.2`, `4.1.1`, or `1.88.1`, and malformed tool output, are rejected.
 
 Do not use `uniffi-bindgen-kotlin-jni`. Do not use a globally installed `uniffi-bindgen` whose version may drift.
 
@@ -60,7 +62,7 @@ Debug and release native outputs are separate. The Gradle tasks delete the desti
 
 `android/app/build.gradle.kts` resolves `cargo` and `rustup` from PATH or `CARGO_HOME`, sets `ANDROID_NDK_HOME` to the pinned NDK under the Android SDK, and:
 
-1. Ensures Rust 1.88.0, Android targets `aarch64-linux-android` / `x86_64-linux-android`, and cargo-ndk 4.1.2 (`cargo install cargo-ndk --version 4.1.2 --locked` if missing).
+1. Ensures exactly `rustc 1.88.0`, Android targets `aarch64-linux-android` / `x86_64-linux-android`, and exactly `cargo-ndk 4.1.2` (`cargo install cargo-ndk --version 4.1.2 --locked` if the reported version is not that exact token).
 2. Builds the host `veil-ffi` library for UniFFI metadata.
 3. Runs `cargo run -p veil-uniffi-bindgen --locked -- generate --library <host cdylib> --language kotlin --no-format`.
 4. Builds Android libraries with `cargo ndk -t arm64-v8a -t x86_64 --platform 26` into the variant `jniLibs` directory.
@@ -78,7 +80,7 @@ Compose and the rest of the app depend on handwritten types in `com.veil.app.cor
 
 Generated UniFFI calls stay inside `ProductionCoreNativeApi`. JVM unit tests inject `CoreNativeApi` fakes from test sources only.
 
-Native load or UniFFI failure → `UNAVAILABLE`. Unsupported contract version → `INCOMPATIBLE`. Neither path returns a default successful policy snapshot, exposes `Throwable` / JNA / native paths to UI, nor logs filesystem/native-library paths.
+Expected native/JNA/UniFFI failures (`Exception` or `LinkageError`, including `UnsatisfiedLinkError`) → `UNAVAILABLE`. Unsupported contract version → `INCOMPATIBLE`. The production adapter does not catch `Throwable`, so fatal VM conditions are not converted into `UNAVAILABLE`. Neither path returns a default successful policy snapshot, exposes exceptions / JNA / native paths to UI, nor logs filesystem/native-library paths.
 
 ## SecurityFeatureGate
 
