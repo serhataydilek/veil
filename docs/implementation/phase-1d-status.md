@@ -58,6 +58,10 @@
 - `connectedDebugAndroidTest` passed on `Medium_Phone_API_36.1` (AVD, Android 16, x86_64): 14 tests, 0 failures/errors, including two real UniFFI/JNA/`libveil_ffi.so` tests.
 - A generated-output-clean rebuild regenerated UniFFI Kotlin and Android `.so` files and re-verified the debug APK.
 
+## Phase 1E pointer
+
+Phase 1E (`docs/decisions/015-secure-session-library-candidate.md`) evaluates libsignal v0.99.1 as a secure-session library candidate and leaves it **BLOCKED**. It does not change this FFI contract, add cryptographic crates, or make secure session available.
+
 ## Known limitations
 
 - The FFI boundary is real and tested, not independently security-audited.

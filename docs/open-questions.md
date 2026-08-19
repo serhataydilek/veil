@@ -2,7 +2,7 @@
 
 ## BLOCKER
 
-- **Concrete one-to-one library approval:** the Signal-style protocol direction is selected, but legal distribution, upstream support posture, API/persistence fit, maintenance, and independent-review gates must select a library; no custom ratchet is permitted.
+- **Concrete one-to-one library approval:** the Signal-style protocol direction is selected (ADR 005). Phase 1E records **libsignal v0.99.1** (`97801d22dcf9f5bf714f7b8fa3212cdc973ae1c8`) as the technically preferred candidate and **BLOCKED** (ADR 015). Legal distribution, unsupported-upstream plan, crash-atomic stores, operational pin/SBOM/advisory process, and independent application review must still pass; no custom ratchet is permitted. The crate is not added.
 - **Final mutual-rendezvous construction:** the symmetric capability-pair tag was rejected because a relay can enumerate its live-capability corpus. Select and externally review a deployable construction that prevents pre-match target recovery by any single relay role.
 
 Phase 0.8 review packages (`docs/review/`) prepare these decisions but do not resolve either blocker. ADR 010 accepts only the dependency-selection process.
