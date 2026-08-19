@@ -164,33 +164,66 @@ Canonicalization mismatch (different version, length prefix, or sort order) yiel
 
 Repeat ADR 007 against this architecture. The relay's stored match representation is the locator `L`, not `H(A,B)` bound to a presented `A`.
 
-### A. Locator, zero raw capabilities
+The construction **removes the server-created corpus in normal operation**. It does **not** provide cryptographic protection if suitable raw-ID datasets are later assembled elsewhere (screenshots, backups, a reintroduced registration API, a harvested candidate list).
 
-The relay cannot test candidates. There is no corpus. **Enumeration resistance holds architecturally.**
+### Zero IDs known (locator only)
 
-### B. Relay later learns one capability
+The observer cannot test candidates. There is no corpus and no anchor. **Enumeration resistance holds architecturally.**
 
-Given `C_A` and `L`, recovering `C_B` requires inverting the locator derivation. For a reviewed PRF/KDF this is not feasible. The relay **can** confirm a guessed `C_B'` by recomputing `L`. That is a confirmation test, not recovery of an unknown peer.
+### One ID known, no candidate corpus
 
-If the client also still proved possession of `C_A` to the relay, the attack would collapse toward ADR 007. This candidate **must not** send the raw self-capability.
+Given `C_A` and `L`, recovering unknown `C_B` requires inverting the locator derivation. For a reviewed PRF/KDF this is not feasible. Confirming a **single guessed** `C_B'` is possible by recomputing `L`. That is guess confirmation, not recovery of an unknown peer from an empty set.
 
-### C. Small subset of unrelated capabilities
+This case is **safe only when the observer has no useful candidate list**.
 
-For every pair in the subset, recompute locators and compare to stored `L` values. A pair present in both the subset and an unmatched intent is revealed. Unknown capabilities outside the subset are not recovered.
+If the client also still proved possession of `C_A` to the relay in the clear, the attack would collapse toward ADR 007. This candidate **must not** send the raw self-capability.
 
-### D. Full raw-capability corpus
+### Anchored corpus: known `C_A` + candidate set `S`
 
-**Fails.** For each unordered pair `(X, Y)` in the corpus, compute the locator and compare to `L`. Cost is `O(n²)` in corpus size, not `O(n)` as in ADR 007 (because `A` is no longer given). For a large live set this is still practical for a determined operator, not a 256-bit brute force.
+Given:
 
-If a full raw-capability corpus exists, this family **does not** provide enumeration resistance. The design's claim is that **normal operation must not give the relay that corpus**.
+- `C_A`
+- locator `L`
+- candidate set `S = {X_1, …, X_k}`
 
-### E. Database leak of locators/intents only
+the observer computes `locator(C_A, X_i)` for each `X_i`. Cost: **`O(k)`**.
 
-Opaque locators, SPAKE2 public messages, confirmation MACs, TTLs, and any retained IP/timing. No raw IDs, pair secret, or PAKE key. Leak value is attempt metadata, not target recovery.
+If the actual `C_B` is in `S`, the observer **recovers it** within that set. This is not generic guess confirmation. It is the ADR 007 linear test with an external or leaked candidate list instead of a server-issued live corpus.
 
-### F. Locator leak plus later screenshots/capability leaks
+Sources of `S` include: a small set of screenshotted IDs, a stolen subset of client stores, a harvested public paste of IDs, or a full dump of raw capabilities.
 
-Same as B/C: confirmation of suspected pairs when enough raw IDs become known. Historical locators remain testable forever if copied, even after TTL on the live database.
+### One ID known + full corpus
+
+Same as anchored corpus with `k = n` (all known raw IDs). Cost **`O(n)`**, matching ADR 007's complexity once an anchor exists.
+
+### No anchor + full corpus
+
+For each unordered pair `(X, Y)` in the corpus, compute the locator and compare to `L`. Cost **`O(n²)`**. Still practical for a determined operator with a large dump; not 256-bit work.
+
+If a full raw-capability corpus exists, this family **does not** provide enumeration resistance.
+
+### Unrelated small subset, no distinguished anchor
+
+For every pair in the subset, recompute locators and compare to stored `L` values. A pair present in both the subset and an unmatched intent is revealed. Unknown capabilities outside the subset are not recovered. If the observer later learns one ID that was in a stored locator, that ID becomes an anchor and the test drops to `O(k)` against the rest of the subset.
+
+### Database leak of locators/intents only
+
+Opaque locators, SPAKE2 public messages, confirmation MACs, TTLs, and any retained IP/timing. No raw IDs, pair secret, or PAKE key. Leak value is attempt metadata, not target recovery — **until** an anchor or corpus is later combined with the leaked locators.
+
+### Historical locator + later leaked anchor/corpus
+
+Copied locators remain testable forever. A later leak of one capability (screenshot, backup) turns every historical locator that used it into an `O(k)` recovery problem against any candidate set available at that later time. A later full corpus enables `O(n)` (with anchor) or `O(n²)` (without).
+
+### Summary
+
+| Model | Unmatched target recovery |
+|---|---|
+| Zero IDs known | Holds architecturally |
+| One ID known, no candidate corpus | Holds against recovery; guess confirmation only |
+| One ID known + small candidate corpus `S` | **Fails if `C_B ∈ S`:** `O(k)` locator tests |
+| One ID known + full corpus | **Fails:** `O(n)` |
+| No anchor + full corpus | **Fails:** `O(n²)` |
+| Historical locator + later leaked anchor/corpus | **Fails** once the leak supplies an anchor and/or `S` |
 
 ## 6. RFC 9382 SPAKE2 suitability
 
@@ -446,29 +479,37 @@ Cryptography authenticates knowledge of the pair secret (properties 1–2). It d
 
 ## 17. Attack matrix
 
+Ratings: **honest-client enforced**, **mitigated**, **accepted**, **blocked/unknown**. Do not say prevented when the property depends on honest-client behavior.
+
 | Attack | Rating | Rationale |
 |---|---|---|
-| Live-corpus enumeration (ADR 007) | **Prevented** in normal operation | No live raw-ID corpus; locator not bound to a presented `A` |
-| One-ID-known enumeration | **Mitigated** | Cannot recover the unknown ID; can confirm a guess |
-| Full-corpus leak | **Accepted / fails if corpus exists** | `O(n²)` pair test; architecture must not create that corpus |
-| Relay active forgery of mutuality | **Prevented** if composition is correct | SPAKE2 confirmation needs `w`; otherwise **blocked/unknown** until review |
+| Zero IDs known / live server corpus (ADR 007) | **Mitigated** in normal operation | No server-created raw-ID corpus; locator not bound to a presented `A`. Not cryptographic unlinkability. |
+| One ID known, no candidate corpus | **Mitigated** | Preimage of locator; guess confirmation only |
+| One known ID + small candidate corpus | **Accepted** if `S` can be assembled | **`O(k)`** recovery when `C_B ∈ S` |
+| One known ID + full corpus | **Accepted** if such a dump exists | **`O(n)`** |
+| No anchor + full corpus | **Accepted** if such a dump exists | **`O(n²)`** pair test |
+| Historical locator + later leaked anchor/corpus | **Accepted** | Copied locators remain testable |
+| Malicious relay without `w` | **Mitigated** if composition is correct; else **blocked/unknown** | Property 1: confirmation needs `w` |
 | Relay replay | **Mitigated** | Instance binding + tombstone + no ephemeral reuse; relay can still DoS |
-| Relay transcript substitution | **Prevented** if confirmation is mandatory | Split `Ke`; MAC fail |
+| Relay transcript substitution | **Mitigated** if confirmation is mandatory | Split `Ke`; MAC fail |
+| Malicious relay colluding with one legitimate participant | **Accepted** | That participant already knows `w` (both IDs) and can simulate the other role (Attack A). Collusion adds network position, not a new secret. |
+| Unilateral client simulates both roles | **Honest-client enforced** | Attack A: SPAKE2 cannot distinguish; official clients emit one role. Does not force honest B who never polls. |
+| Both capabilities stolen | **Accepted** | Attack B: thief knows `w`; bearer model is not ownership |
+| Owner-authentication absent | **Accepted** relative to property 3 | SPAKE2-only does not prove distinct-owner participation |
+| Owner-authentication candidate (if added later) | **Blocked/unknown** | Design-level option only; no primitive chosen; review may prefer a different AKE |
 | Unknown key share | **Mitigated** | Capability encodings as RFC 9382 identities; nil identities forbidden |
 | Reflection | **Mitigated** | `M≠N` + abort rules + confirmation |
 | Stale attempt | **Mitigated** | Local TTL, new ephemerals on replace, ignore mismatched confirmations |
 | Duplicate intent | **Mitigated** | Replace-in-place; one live blob per role |
 | Race | **Mitigated** | Transcript binding; one success; extras fail; residual desync DoS |
-| Capability expiry | **Mitigated** for honest clients | Local checks; **not** globally enforced |
-| One-time reuse | **Mitigated** for honest owner | **Accepted** gap vs malicious owner |
-| Malicious client | **Accepted** for owner policy | Cannot impersonate a pair they do not know |
+| Capability expiry | **Honest-client enforced** | Local checks; **not** globally enforced |
+| One-time reuse | **Honest-client enforced** / **accepted** vs malicious owner | Owner marks consumed; no global corpus |
+| Malicious client (owner policy) | **Accepted** | Cannot impersonate a pair they do not know; can violate own expiry/one-time/UI |
 | Sybil | **Mitigated** | Rate/size caps; residual farming |
-| Database leak (locators only) | **Mitigated** | No raw IDs; attempt metadata remains |
+| Database leak (locators only) | **Mitigated** until combined with an ID dataset | No raw IDs in the leak itself; attempt metadata remains |
 | Log leak | **Mitigated** if locators/IPs redacted | **Accepted** if operators log locators |
 | Completed-match metadata | **Accepted** | V1 limitation |
-| Relay/service compromise | **Mitigated** for pre-match target recovery | Still DoS, IP/timing, completed-match correlation; E2EE of later messages is a different layer (blocked) |
-
-Ratings other than Prevented/Mitigated/Accepted/Blocked/unknown are not used.
+| Relay/service compromise | **Mitigated** for pre-match target recovery **without** an external ID corpus | Still DoS, IP/timing, completed-match correlation; E2EE of later messages is a different layer (blocked) |
 
 ## 18. Rust library inventory (no dependency added)
 

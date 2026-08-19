@@ -57,7 +57,7 @@ This is not assumed safe because it sounds simpler. Removing issuance also remov
 | Pair secret / PAKE password | Tag was a deterministic function of the pair | Derived only on clients; not sent |
 | Stable identity | Hidden until later handshake | Still hidden until later handshake (ADR 005/015 independently BLOCKED) |
 
-The intended property is architectural: **the relay should not possess a raw-capability corpus in normal operation.** It is not mathematical unlinkability. If a full raw-capability corpus is later reintroduced (leak of client backups, screenshots at scale, a future registration API), offline pair enumeration of locators becomes possible again.
+The intended property is architectural: **the relay should not possess a raw-capability corpus in normal operation.** It is not mathematical unlinkability. If a suitable raw-ID dataset is later assembled (screenshots, backups, a candidate list, a full dump), locators become testable: `O(k)` with one known ID plus a candidate set of size `k`, `O(n)` with one known ID plus a full corpus, `O(n²)` with a full corpus and no anchor.
 
 ## Corpus-enumeration results (summary)
 
@@ -65,12 +65,13 @@ Full analysis: `docs/review/client-secret-spake2-rendezvous.md`.
 
 | Model | Unmatched target recovery |
 |---|---|
-| A. Locator only; zero raw capabilities | Holds architecturally: no corpus to test |
-| B. Relay later learns one of the two capabilities | Cannot recover the unknown peer from the locator alone (preimage); can *confirm* a guessed second capability |
-| C. Small unrelated capability subset | Can confirm a pair if **both** members are in the subset; cannot recover unknowns |
-| D. Full raw capability corpus | **Fails:** quadratic pair-enumeration of locators (`O(n²)` rather than ADR 007's `O(n)`). Still not 2^256 work. |
-| E. Database leak of locators/intents only | Cannot recover raw capabilities; leaks pairing attempts, timing, and whatever IP/logs were retained |
-| F. Locator leak + later screenshots/capability leaks | Confirmation of suspected pairs; not recovery of unknown capabilities without a corpus |
+| Zero IDs known | Holds architecturally: no corpus to test |
+| One ID known, no candidate corpus | Holds against recovery; observer can only confirm an independent guess |
+| One ID known + candidate set `S` of size `k` | **Fails if the peer ID is in `S`:** `O(k)` tests of `locator(C_A, X_i)` |
+| One ID known + full corpus | **Fails:** `O(n)` |
+| No anchor + full corpus | **Fails:** `O(n²)` |
+| Database leak of locators/intents only | Cannot recover raw capabilities until combined with an ID dataset; leaks attempts/timing/IP if retained |
+| Historical locator + later leaked anchor/corpus | **Fails** once an anchor and/or `S` appears |
 
 Do not claim unlinkability. Completed-match participant correlation (same locator, IPs, timing) remains an accepted V1 limitation if this family is ever deployed.
 

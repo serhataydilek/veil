@@ -32,7 +32,7 @@ This construction is **preferred for external review** and **BLOCKED for impleme
 |---|---|
 | MUST | No user-visible unilateral oracle or peer notification; replay resistance; expiry and one-time semantics (honest-client vs malicious-owner distinguished); asynchronous/mobile practicality; bounded state; explicit TTL/deletion; auditable implementation; stable identity hidden until secure session; a relay that does not know `w` cannot fabricate a confirmed SPAKE2 transcript. Distinct-owner participation is **not** a MUST until product/review explicitly requires it. |
 | DESIRED | No single relay role can recover an unmatched target through a live raw-capability corpus **because that corpus is not retained**; minimized pre-match relationship metadata. |
-| ACCEPTED LIMITATIONS | Completed-match timing, relay IP/timing, and V1 push device correlation may remain visible; global traffic-analysis resistance is not promised; a leaked full raw-capability corpus would again allow offline pair-enumeration of locators (`O(n²)`). |
+| ACCEPTED LIMITATIONS | Completed-match timing, relay IP/timing, and V1 push device correlation may remain visible; global traffic-analysis resistance is not promised; one known capability plus a candidate corpus enables `O(k)` locator testing; a full raw-capability dump enables `O(n)` with an anchor or `O(n²)` without. |
 | NON-GOALS | Perfect anonymity; endpoint-compromise protection; global enforcement of expiry/one-time against a malicious owner without reintroducing a corpus or credentials; protection from colluding independent services unless a selected design explicitly and realistically depends on non-collusion. |
 
 ## Reviewer boundary
