@@ -22,4 +22,4 @@ Evidence can age and audits are scoped snapshots. The process requires future re
 
 ## Open issues
 
-libsignal and OpenMLS remain unapproved. The final rendezvous construction remains a separate BLOCKER under ADR 007.
+libsignal and OpenMLS remain unapproved. The final rendezvous construction remains a separate BLOCKER under ADR 007; ADR 016 is a preferred review candidate only.

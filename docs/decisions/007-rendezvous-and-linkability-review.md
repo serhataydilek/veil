@@ -2,7 +2,9 @@
 
 ## Status
 
-**BLOCKED PENDING NEW CONSTRUCTION.** ADR 002's simple symmetric-hash V1 candidate is withdrawn; it remains recorded for history and must not be implemented.
+**BLOCKED PENDING EXTERNAL REVIEW OF A NEW CONSTRUCTION.** ADR 002's simple symmetric-hash V1 candidate is withdrawn; it remains recorded for history and must not be implemented.
+
+Phase 1F records a **preferred review candidate** in [ADR 016](016-rendezvous-construction-candidate.md) (client-secret capabilities + opaque locator + RFC 9382 SPAKE2). That candidate is **not** accepted for implementation. This ADR's rejection of enumerable pair tags and its requirement for independent review **stand**.
 
 ## Context
 
