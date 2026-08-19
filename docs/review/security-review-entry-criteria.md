@@ -4,9 +4,9 @@ Veil must not begin cryptographic implementation until these entry criteria are 
 
 ## Rendezvous
 
-- A candidate construction is selected with a full role/observation model.
-- The live-corpus enumeration attack is addressed, or a lower privacy target is explicitly accepted and reflected in product/privacy claims.
-- Independent cryptographic review is complete for the exact composition, or implementation remains blocked.
+- A candidate construction is selected with a full role/observation model. Phase 1F records ADR 016 as that candidate write-up; implementation remains blocked.
+- The live-corpus enumeration attack is addressed, or a lower privacy target is explicitly accepted and reflected in product/privacy claims. ADR 016 addresses it architecturally by removing the raw corpus in normal operation, and states that a later full corpus would restore pair enumeration.
+- Independent cryptographic review is complete for the exact composition, or implementation remains blocked. Phase 1F documentation does not satisfy this gate.
 - Test strategy includes corpus enumeration, malformed-input oracle, replay/duplicate/race, expiry/one-time, TTL/deletion, failure, collusion, and malicious-client tests.
 - TTL/state/abuse model is approved without a unilateral user notification or existence oracle.
 

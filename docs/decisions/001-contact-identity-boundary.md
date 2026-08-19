@@ -4,6 +4,8 @@
 
 Accepted for V1 architecture; exact encoding and issuance abuse controls require review.
 
+**Phase 1F issuance conflict:** [ADR 016](016-rendezvous-construction-candidate.md) records a **preferred review candidate** that would replace **server-issued** capabilities with **client-generated secrets never registered in raw form**. That supersession is **conditional and BLOCKED for implementation** pending external review. This ADR's issuance/registration direction remains the current accepted decision until that review approves a replacement. Unlinkable encoding rules (no stable public key, device ID, account, or deterministic old→new relation) are not withdrawn. Do not treat ADR 016 as production authorization.
+
 ## Context
 
 Veil needs rotating, one-time, and QR contact IDs without turning its stable device identity into a public address. A person holding one temporary ID must not be able to link it to another period's ID, query an identity, or obtain a peer's authentication key before mutual pairing.
