@@ -1,0 +1,16 @@
+[package]
+name = "veil-ffi"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+publish = false
+description = "Narrow UniFFI bridge over veil-core. Policy and status only."
+
+[lib]
+name = "veil_ffi"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+uniffi = { version = "=0.32.0", default-features = false }
+veil-core = { path = "../veil-core" }

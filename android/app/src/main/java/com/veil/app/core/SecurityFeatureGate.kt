@@ -8,13 +8,36 @@ enum class SecurityFeature {
 
 sealed interface SecurityFeatureAvailability {
     data class SecurityReviewRequired(val feature: SecurityFeature) : SecurityFeatureAvailability
+    data class Unavailable(val feature: SecurityFeature) : SecurityFeatureAvailability
+    data class NotImplemented(val feature: SecurityFeature) : SecurityFeatureAvailability
 }
 
-/**
- * Android-side presentation boundary until the reviewed Rust core is integrated.
- * No feature has an available default in Phase 1A.
- */
-object SecurityFeatureGate {
+class SecurityFeatureGate(
+    private val bridge: RustCoreBridge,
+) {
     fun availability(feature: SecurityFeature): SecurityFeatureAvailability =
-        SecurityFeatureAvailability.SecurityReviewRequired(feature)
+        when (feature) {
+            SecurityFeature.CONTACT_ID_ISSUANCE ->
+                SecurityFeatureAvailability.NotImplemented(feature)
+            SecurityFeature.RENDEZVOUS,
+            SecurityFeature.SECURE_SESSION,
+            -> rustBackedAvailability(feature)
+        }
+
+    private fun rustBackedAvailability(feature: SecurityFeature): SecurityFeatureAvailability {
+        val snapshot = bridge.load()
+        if (snapshot.status != CoreBridgeStatus.AVAILABLE) {
+            return SecurityFeatureAvailability.Unavailable(feature)
+        }
+        val rustStatus = when (feature) {
+            SecurityFeature.RENDEZVOUS -> snapshot.rendezvousStatus
+            SecurityFeature.SECURE_SESSION -> snapshot.secureSessionStatus
+            SecurityFeature.CONTACT_ID_ISSUANCE -> null
+        }
+        return when (rustStatus) {
+            CoreSecurityGateStatus.REVIEW_REQUIRED ->
+                SecurityFeatureAvailability.SecurityReviewRequired(feature)
+            null -> SecurityFeatureAvailability.Unavailable(feature)
+        }
+    }
 }
