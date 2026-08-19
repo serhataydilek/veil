@@ -24,7 +24,7 @@ Client-secret capability + opaque pair locator + RFC 9382 SPAKE2 with explicit k
 
 Details: `docs/review/client-secret-spake2-rendezvous.md`, `docs/review/rendezvous-construction-refresh-2026-08-19.md`, [ADR 016](../decisions/016-rendezvous-construction-candidate.md).
 
-This construction is **preferred for external review** and **BLOCKED for implementation**. RFC 9382 is IRTF Informational, not IETF Standards Track, and SPAKE2 was not selected in the CFRG PAKE competition.
+This construction is **preferred for external review** and **BLOCKED for implementation**. RFC 9382 is IRTF Informational, not IETF Standards Track, and SPAKE2 was not selected in the CFRG PAKE competition. SPAKE2 is in scope as pair-secret authentication and relay-without-`w` forgery resistance, **not** as distinct-owner proof.
 
 ## Required properties
 

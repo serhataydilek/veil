@@ -56,6 +56,26 @@ Product rule: a conversation is created only when both users independently add e
 
 This package does **not** silently choose. Existing invariants (especially invariant 3: one-sided possession cannot create/notify/confirm a conversation **for the other party**) plus ADR 001’s bearer model are compatible with **A**. They do **not** currently close **B** as a mandatory cryptographic invariant. **B remains an explicit external-review / product question.** If review requires **B**, this construction is incomplete until owner-proof is added or the PAKE is replaced.
 
+### 1.5 Owner-exclusive proof option (design only — not selected, not implemented)
+
+If interpretation **B** is required, SPAKE2-only cannot supply it. A future reviewed layer could add **per-capability owner-authentication material**:
+
+- At capability generation: random unlinkable capability secret **and** a fresh owner-authentication keypair bound only to **this** rotating / one-time / QR ID.
+- The shared contact encoding **may** include the fresh **public** verification material.
+- The **private** owner-authentication key never leaves the owner device, is not the stable Veil identity, is not reused across rotations, is not derived from the stable identity, and is not registered in raw form with the relay.
+- The peer learns the public verification material only because it already possesses the shared contact ID.
+- A reviewed protocol could require each SPAKE2 role/transcript to carry proof under the corresponding per-capability owner secret.
+
+No signature primitive, crate, or encoding is chosen here.
+
+**Would this restore property 3?** Architecturally, yes: confirmation would require the holder of `C_A`'s owner secret **and** the holder of `C_B`'s owner secret, not merely someone who copied both encodings. A thief of both **encoded IDs** who lacks both private owner keys could not produce both proofs. A thief who also steals a device's owner-auth private key for that ID is then that ID's owner for this purpose.
+
+**Relay linkability:** a fresh per-ID public key is **not** ADR 001's rejected **stable** identity material if it is independently generated, never reused, not derived from the stable identity, and has no old→new relation. The relay still must not receive the raw contact encoding. Peers who already hold the ID already see whatever public material it contains. Publishing the same owner-auth public key in two IDs would recreate linkability; the option forbids reuse.
+
+**Complexity:** stacking signatures (or similar) onto SPAKE2 may be the wrong composition. An external reviewer should consider whether a different authenticated key-exchange (with per-capability keys as the long-term material for this ID only) is simpler than PAKE-plus-owner-proof. Exact construction is left to that review. This option is **not** an implementation candidate in Phase 1F.
+
+ADR 001 is **not** rewritten as already approving per-contact public verification material. The distinction is recorded so reviewers do not confuse it with a stable identity key inside the ID.
+
 ## 2. Client-generated contact capabilities
 
 ### 2.1 Candidate properties
@@ -563,10 +583,12 @@ Minimum scope for the **exact Veil composition**, not “SPAKE2 in general”:
 3. Role assignment vs `M=N`.
 4. Identities in `TT` (capability encodings) never sent to the relay, still binding UKS.
 5. Store-and-forward, retries, races, and crash/resume.
-6. Proof that a relay without `w` cannot cause confirmation success.
-7. Corpus models A–F, including honest statement that a full raw corpus restores pair enumeration.
+6. Proof that a relay **without `w`** cannot cause confirmation success (property 1).
+7. Corpus models including anchored `O(k)` recovery, not only `O(n²)` dumps.
 8. Oracle/uniform-response behavior.
 9. Retention and abuse without an account identifier.
-10. Test strategy: RFC 9382 vectors for the chosen ciphersuite; corpus-enumeration tests; relay-forgery tests; replay/race; expiry/one-time honest-vs-malicious; log redaction.
+10. Whether Veil requires property 3 (distinct-owner participation). If yes, SPAKE2-only is incomplete; evaluate per-capability owner-authentication vs a different AKE. If no, document honest-client role assignment as the product semantic.
+11. Both-roles simulation and stolen-both-capabilities tests; do not rate them as cryptographically prevented.
+12. Test strategy: RFC 9382 vectors for the chosen ciphersuite; corpus-enumeration tests including one-ID-plus-`S`; relay-without-`w` forgery tests; replay/race; expiry/one-time honest-vs-malicious; log redaction.
 
 Entry criteria in `docs/review/security-review-entry-criteria.md` still require that independent review (or remaining blocked). This Phase 1F package is the candidate write-up those criteria asked for. It does not satisfy the independent-review criterion.

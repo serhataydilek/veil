@@ -127,7 +127,7 @@ Allowed outcomes:
 
 **Not allowed:** accepted for implementation, unless an independent cryptographic review of the exact Veil composition already exists. AI analysis is not that review.
 
-Recorded outcome: **A**. See ADR 016.
+Recorded outcome: **A**, with distinct-owner cryptographic proof left as an explicit unblock question (not assumed, not rejected). See ADR 016.
 
 ## Unchanged product constraints
 
