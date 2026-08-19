@@ -86,7 +86,7 @@ A malicious or compromised relay that sees the first party's locator can:
 
 and try to make the first client conclude **mutual pairing complete**.
 
-Any candidate that stops at a deterministic locator is therefore **unsafe for reciprocity**. The primary family adds an authenticated handshake using knowledge of the shared capability pair (SPAKE2 + explicit key confirmation per RFC 9382). The relay may still deny service.
+Any candidate that stops at a deterministic locator is therefore **unsafe against a relay that copies the first locator**. The primary family adds RFC 9382 SPAKE2 with explicit key confirmation so a relay **without `w`** cannot fabricate a valid confirmed transcript. SPAKE2 does **not** prove distinct-owner participation. The relay may still deny service.
 
 ## Primary candidate family (review only)
 
@@ -106,9 +106,9 @@ Ratings are fit observations, not scores. Details: `docs/review/rendezvous-candi
 | # | Family | Result for Veil V1 |
 |---|---|---|
 | 1 | Server-issued capability + `H(A,B)` | **REJECTED** (ADR 007). Linear corpus enumeration. |
-| 2 | Client-secret capability + deterministic locator only | Target privacy may improve (no raw corpus, no submitter ID). **Unsafe:** relay-forged reciprocity. |
-| 3 | Client-secret + locator + SPAKE2 | **PRIMARY Phase 1F candidate.** Architecturally removes the live corpus; PAKE is what authenticates mutuality. BLOCKED for implementation pending exact-composition review. |
-| 4 | RFC 9497 OPRF/VOPRF/POPRF composition | Primitive hides a client input from an evaluator. It does not create asynchronous mutual pairing, uniform unilateral UX, or one-time/expiry policy. If the relay has **no** raw corpus, OPRF does not address forged reciprocity (PAKE does) and does not by itself improve the chosen architecture. If a corpus is reintroduced, a single operator with key + corpus + comparison state may still test candidates (ADR 007). |
+| 2 | Client-secret capability + deterministic locator only | Target privacy may improve (no raw corpus, no submitter ID). **Unsafe:** a relay without `w` can still copy the locator and invent a counterpart. |
+| 3 | Client-secret + locator + SPAKE2 | **PRIMARY Phase 1F candidate.** Architecturally removes the live corpus. SPAKE2 authenticates pair-secret knowledge and relay-without-`w` forgery resistance (**properties 1–2**). It does **not** prove distinct-owner participation (**property 3**). BLOCKED for implementation pending exact-composition review, including whether Veil requires property 3. |
+| 4 | RFC 9497 OPRF/VOPRF/POPRF composition | Primitive hides a client input from an evaluator. It does not create asynchronous mutual pairing, uniform unilateral UX, or one-time/expiry policy. If the relay has **no** raw corpus, OPRF does not address relay-without-`w` transcript forgery (a PAKE does) and does not by itself improve the chosen architecture. If a corpus is reintroduced, a single operator with key + corpus + comparison state may still test candidates (ADR 007). |
 | 5 | Blind-issued / anonymous-credential capabilities | Can preserve server-enforced expiry/consumption without handing the relay raw IDs at validation time. Reintroduces issuance infrastructure, a form of issued-record corpus, and high review/ops cost. Not justified for V1 merely to globally enforce honest-client policy. |
 | 6 | Google Private Set Membership | Answers membership queries while limiting what client and server learn about a set. Not a one-pair asynchronous mutual-intent protocol. Repository disclaims official Google product support. |
 | 7 | Two-server split trust | Can split corpus vs match state **if** a corpus exists. With no raw corpus, it is not required to close ADR 007's specific attack. Adds availability, collusion, and operator cost. Not selected. |

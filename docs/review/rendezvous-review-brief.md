@@ -16,7 +16,7 @@ ADR 001 currently issues or validates temporary capabilities, which creates a fi
 
 `T = H(canonical_order(A, B))` remains rejected (ADR 007). A relay holding `A`, `T`, and every live capability can recover `B` in linear corpus time.
 
-A **locator-only** client-secret design is also rejected as a complete solution: the relay can copy the first party's locator and invent a second submission. Reciprocity requires an authenticated handshake using knowledge of the capability pair.
+A **locator-only** client-secret design is also rejected as a complete solution: the relay can copy the first party's locator and invent a second submission. Pair-secret authenticated key confirmation is required so a relay **that does not know `w`** cannot fabricate a valid confirmed transcript. That is not proof of distinct-owner participation.
 
 ## Phase 1F primary candidate (review only)
 
@@ -30,7 +30,7 @@ This construction is **preferred for external review** and **BLOCKED for impleme
 
 | Class | Requirement |
 |---|---|
-| MUST | No user-visible unilateral oracle or peer notification; replay resistance; expiry and one-time semantics (honest-client vs malicious-owner distinguished); asynchronous/mobile practicality; bounded state; explicit TTL/deletion; auditable implementation; stable identity hidden until secure session; relay cannot fabricate confirmed mutuality. |
+| MUST | No user-visible unilateral oracle or peer notification; replay resistance; expiry and one-time semantics (honest-client vs malicious-owner distinguished); asynchronous/mobile practicality; bounded state; explicit TTL/deletion; auditable implementation; stable identity hidden until secure session; a relay that does not know `w` cannot fabricate a confirmed SPAKE2 transcript. Distinct-owner participation is **not** a MUST until product/review explicitly requires it. |
 | DESIRED | No single relay role can recover an unmatched target through a live raw-capability corpus **because that corpus is not retained**; minimized pre-match relationship metadata. |
 | ACCEPTED LIMITATIONS | Completed-match timing, relay IP/timing, and V1 push device correlation may remain visible; global traffic-analysis resistance is not promised; a leaked full raw-capability corpus would again allow offline pair-enumeration of locators (`O(n²)`). |
 | NON-GOALS | Perfect anonymity; endpoint-compromise protection; global enforcement of expiry/one-time against a malicious owner without reintroducing a corpus or credentials; protection from colluding independent services unless a selected design explicitly and realistically depends on non-collusion. |

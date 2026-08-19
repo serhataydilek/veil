@@ -17,7 +17,44 @@ CLIENT-SECRET CONTACT CAPABILITY
 + STORE-AND-FORWARD RELAY
 ```
 
-Goal relative to ADR 007: remove the live raw-capability corpus from the relay in normal operation, and authenticate reciprocity so a relay that sees the first locator cannot fabricate a completed mutual pairing.
+Goal relative to ADR 007: remove the live raw-capability corpus from the relay in normal operation, and use SPAKE2 so a relay that **does not know** the pair secret cannot fabricate a valid confirmed peer transcript.
+
+SPAKE2 authenticates **possession of the pair secret**. It does **not** by itself prove two distinct devices or users participated, that the owner of `C_B` participated, that B independently entered `C_A`, or that the sender of role B is the original owner of `C_B`. Do not collapse those claims into “mutuality” or “authenticated reciprocity.”
+
+### 1.1 Three properties (do not collapse)
+
+| | Property | Does RFC 9382 SPAKE2 provide it when correctly instantiated? |
+|---|---|---|
+| **1** | A relay that does not know `w` cannot fabricate a confirmed SPAKE2 transcript | **Yes** (intended PAKE + mandatory key confirmation; composition still needs review) |
+| **2** | A confirmed peer knows the pair secret / both capability values | **Yes** — that is what the shared password is |
+| **3** | The actual owner of the opposite contact capability independently participated | **No** |
+
+Malicious-relay protection is property 1. Malicious-client / stolen-ID behavior is properties 2 and 3. Keep them separate.
+
+### 1.2 Attack A — unilateral participant simulates both roles
+
+A possesses `C_A` (own) and `C_B` (entered). A can therefore derive `PAIR_SECRET`, `w`, and `RENDEZVOUS_LOCATOR`. A malicious implementation instantiates **both** SPAKE2 roles, producing `pA`, `pB`, and both confirmation messages.
+
+SPAKE2 cannot distinguish this from two holders of the same pair secret. Distinct-party reciprocity is **not** cryptographically enforced.
+
+This does **not** let A force an **honest** B to render a conversation if B never knows or polls the locator. It proves only that “pairing complete” on A’s device can be a self-handshake.
+
+Official Veil clients would generate only their assigned role after local peer-ID entry. That is honest-client behavior, not a protocol proof.
+
+### 1.3 Attack B — third party steals both capabilities
+
+Anyone who obtains both `C_A` and `C_B` knows `w` and can participate as either SPAKE2 role. The current bearer-capability model does **not** authenticate ownership of either contact capability (consistent with ADR 001: possession is not identity).
+
+### 1.4 What Veil’s product rule actually requires
+
+Product rule: a conversation is created only when both users independently add each other’s IDs.
+
+| Interpretation | Meaning | Consequence for this candidate |
+|---|---|---|
+| **A. Honest-client product semantic** | Official clients emit only their assigned SPAKE2 role after local peer-ID entry. A malicious endpoint can violate its own local state/UI. | SPAKE2-only can match this rule for honest users. Property 3 is not claimed. |
+| **B. Cryptographic distinct-owner guarantee** | The protocol must prove that the owner/device that created `C_A` and the owner/device that created `C_B` each participated independently. | **SPAKE2-only is incomplete.** Needs extra owner-authentication or a different AKE. |
+
+This package does **not** silently choose. Existing invariants (especially invariant 3: one-sided possession cannot create/notify/confirm a conversation **for the other party**) plus ADR 001’s bearer model are compatible with **A**. They do **not** currently close **B** as a mandatory cryptographic invariant. **B remains an explicit external-review / product question.** If review requires **B**, this construction is incomplete until owner-proof is added or the PAKE is replaced.
 
 ## 2. Client-generated contact capabilities
 
@@ -38,6 +75,8 @@ Candidate serialized metadata (local object, not a server credential):
 
 The relay must not receive the raw capability merely because it exists. There is **no** server-side raw-capability registration database in this candidate.
 
+Bearer capabilities authenticate possession, not ownership. Anyone who holds the encoded ID can use it as an input to locator/`w` derivation.
+
 ### 2.2 Can this replace ADR 001 issuance?
 
 ADR 001 chose **server-issued** opaque credentials so the relay could validate expiry and consumption without storing an identity mapping. Option 2 in ADR 001 (client-generated random capability plus server registration) was deferred because registration/revocation and abuse enforcement were harder.
@@ -55,7 +94,7 @@ What issuance actually bought:
 | Relay revocation list | **No** — owner stops participating and rotates |
 | Issuance throttling as abuse control | **No** — abuse moves to IP/rolling limits, size caps, and future optional tokens/PoW |
 
-Honest-user security under Veil's **mutual-only** rule does not require the relay to know raw IDs. A stranger who holds only `C_A` cannot complete pairing unless the owner of `C_A` independently enters the stranger's current ID.
+Honest-user security under Veil's **mutual-only** rule does not require the relay to know raw IDs. A stranger who holds only `C_A` cannot derive a pair locator or `w` with an unknown `C_B`. If they also obtain `C_B`, they know `w` (Attack B). Completing a handshake still does not prove the original owner participated (property 3).
 
 Global server-side ID consumption is **not** treated as a critical honest-user security property for this candidate. It **is** required if Veil insists on enforcing expiry/one-time/revocation against a **malicious or buggy owner client**. That policy is not promised by cryptography here. If a future review declares global consumption mandatory, this candidate becomes **BLOCKED** and issuance (or blind issuance) must be revisited.
 
@@ -74,7 +113,7 @@ Candidate enforcement:
 - Expiry is in the shared encoding; both clients check locally.
 - Owner refuses new intents that use its own expired IDs.
 - Peer refuses locally expired entered IDs.
-- An old ID cannot create a match unless its owner independently participates.
+- An old ID cannot create a locator/`w` unless someone currently holds both capability values used in the pair. That someone need not be the original owner.
 - One-time owner permits only one active/completed pairing **on that honest device**.
 - Relay may tombstone a **completed pair locator** for bounded replay protection.
 - No durable raw-ID revocation database.
@@ -85,8 +124,8 @@ Candidate enforcement:
 |---|---|---|
 | Expired ID will not start a new pairing | Yes, both sides check the encoding | Owner can ignore expiry; a peer who also skips local checks can still pair |
 | One-time ID used for one pairing | Yes, owner marks consumed after confirmation | Owner can reuse the same ID with many peers; each pair has a different locator |
-| Stolen ID used without owner | No: mutual entry still required | Same; theft of one ID is not unilateral pairing |
-| Stolen ID + owner socially engineered | Owner may enter the thief's ID | Server consumption after first match would have blocked a *second* pairing; local policy only if the first device stays honest |
+| Stolen ID used without owner | Thief with **one** ID cannot compute others' locators. Thief with **both** IDs can run SPAKE2 as either role | Possession is not ownership |
+| Stolen ID + owner socially engineered | Owner may enter the thief's ID (honest-client semantic) | Server consumption after first match would have blocked a *second* pairing; local policy only if the first device stays honest |
 | Published ID later “revoked” | Owner abandons attempts and rotates | Cannot globally invalidate copies already held |
 
 **Answer:** these semantics can be **safely enforced for honest users** without a raw-ID server corpus. They cannot be globally enforced against a malicious capability owner. Veil already treats possession as a capability, not identity proof (ADR 001). Do not promise what cryptography cannot enforce.
@@ -217,7 +256,7 @@ Nil identities are **not** recommended. RFC 9382 §3.3: omitting identities “M
 | Issue | Analysis |
 |---|---|
 | Reflection | Copy `pA` into B's slot. With `M≠N`, `pB` is `Y + wN`, not `X + wM`. Confirmation still requires knowledge of `w`. Clients MUST abort on invalid group elements (RFC 9382 §7) and SHOULD abort if `pA` equals `pB` when roles are distinct. |
-| Role confusion | Canonicalization mismatch assigns opposite roles. Handshake fails closed at confirmation. Availability issue, not false mutuality. |
+| Role confusion | Canonicalization mismatch assigns opposite roles. Handshake fails closed at confirmation. Availability issue, not a false confirmed transcript. |
 | Unknown key share | Transcript `TT` includes `len(A)\|\|A\|\|len(B)\|\|B` and `w`. Using the two capability encodings as A/B identities binds `Ke` to that pair. Do not use empty identities. |
 | Canonicalization mismatch | Different locators and/or roles; no complete confirmation. |
 | Equal-value collision | Reject locally. |
@@ -243,9 +282,11 @@ RFC 9382 already models an active network adversary (modify, drop). A store-and-
 
 This composition (SPAKE2 over an untrusted mailbox) is **not specified** as a profile in RFC 9382. Compatibility of the algebra and the PAKE active-adversary model makes it a reasonable candidate. It is not a proof that Veil's retries, crashes, and TTL rules are safe. That is an external-review requirement.
 
-## 9. Relay must not fabricate mutuality
+## 9. Relay must not fabricate a confirmed transcript without `w`
 
-Successful client state **MUTUAL PAIRING COMPLETE** requires cryptographic peer confirmation: verified SPAKE2 key confirmation for the transcript of this attempt.
+Successful honest-client state **PAIRING CONFIRMED** requires verified SPAKE2 key confirmation for this attempt's transcript. That is **property 1**, not property 3.
+
+A relay **without** `w` must not be able to cause an honest client to accept confirmation. That is separate from a **malicious client that already knows `w`** simulating both roles (Attack A).
 
 | Relay action | Expected honest-client result |
 |---|---|
@@ -259,9 +300,11 @@ Successful client state **MUTUAL PAIRING COMPLETE** requires cryptographic peer 
 | Race two different attempts | Attempt/transcript binding; at most one confirmed success; extras fail or are superseded |
 | Present different transcripts to each endpoint | Split view: different `Ke`; peer confirmation MAC does not verify |
 
-The relay **can** cause denial of service (drop, delay, fill storage, desynchronize attempts). It **must not** be able to cause an honest client to conclude pairing complete without another party that knows the shared capability pair.
+The relay **can** cause denial of service (drop, delay, fill storage, desynchronize attempts). It **must not** be able to cause an honest client to conclude pairing confirmed unless some party that knows `w` produced the counterpart transcript.
 
-This property is justified by RFC 9382's intended PAKE + mandatory confirmation, **if** Veil instantiates identities, `w`, abort-on-invalid-points, no nonce reuse, and instance binding correctly. Because that “if” is the composition, the candidate is **preferred for review**, not implementation-approved. If a reviewer shows the composition allows forged completion, the candidate is **BLOCKED**.
+That party is **not** proven to be the original owner of the opposite contact capability, a distinct device, or a distinct user. SPAKE2 authenticates possession of the pair secret and prevents a relay that does not know that secret from fabricating a valid confirmed peer transcript.
+
+This property-1 argument is justified by RFC 9382's intended PAKE + mandatory confirmation, **if** Veil instantiates identities, `w`, abort-on-invalid-points, no nonce reuse, and instance binding correctly. Because that “if” is the composition, the candidate is **preferred for review**, not implementation-approved. If a reviewer shows the composition allows a relay **without `w`** to forge completion, the candidate is **BLOCKED**.
 
 ## 10. Attempt / crash state (requirements only)
 
@@ -390,16 +433,16 @@ A complex anonymous-credential issuance system is **not** selected to replace th
 
 | Behavior | Honest-user impact | Policy vs owner |
 |---|---|---|
-| Client submits both SPAKE2 roles itself | Harmless self-conversation if they hold two capabilities; cannot complete someone else's locator without that pair | Not a relay break |
+| Client submits both SPAKE2 roles itself | SPAKE2 succeeds (Attack A). Honest B who never polls is unaffected. Official clients must not do this; the protocol cannot stop it | Not a relay break; property 3 fails |
 | Sybil many clients | Storage/DoS; rate limits | Residual farming (existing abuse doc) |
 | Owner shares one rotating ID widely | Each pair has its own locator; expected for rotating IDs | Product, not a bug |
-| Attacker steals one capability | Cannot compute locators with third parties; cannot pair unless owner enters attacker's ID | Possession is capability |
-| Attacker steals both capabilities | Can complete this rendezvous and obtain the pairing channel | Equivalent to being both parties for this pair; later identity/session still separate and blocked |
+| Attacker steals one capability | Cannot compute locators with unknown second IDs | Possession is capability; not ownership |
+| Attacker steals both capabilities | Knows `w`; can act as either SPAKE2 role; can complete rendezvous and obtain the pairing channel (Attack B) | Bearer model; later identity/session still separate and blocked |
 | Reused one-time ID | Honest owner refuses second; peers cannot detect globally | Malicious owner can reuse |
 | Owner ignores expiry | Peer who checks locally refuses | Both skipping checks can pair |
 | Malformed locator flooding | DoS | Size/rate caps |
 
-Cryptography authenticates knowledge of the pair. It does not enforce the owner's social policy.
+Cryptography authenticates knowledge of the pair secret (properties 1–2). It does not authenticate ownership of either capability (property 3) and does not enforce the owner's social policy.
 
 ## 17. Attack matrix
 
