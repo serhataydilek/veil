@@ -39,10 +39,23 @@ internal sealed interface RetentionValidation {
 }
 
 internal object RetentionRules {
-    fun validate(envelope: RetentionEnvelope, policy: RetentionPolicy): RetentionValidation {
+    /**
+     * Validates an authenticated retention envelope against policy and the
+     * current conservative clock lower bound.
+     *
+     * Implausible future creation (`createdAt > conservativeNow`) is rejected
+     * with zero skew until a reviewed allowance exists (ADR 004). This prevents
+     * local records from extending visibility past the fail-closed bound.
+     */
+    fun validate(
+        envelope: RetentionEnvelope,
+        policy: RetentionPolicy,
+        conservativeNowMs: Long,
+    ): RetentionValidation {
         val created = envelope.createdAtWallMs
         val expiry = envelope.authenticatedExpiryWallMs
-        if (created < 0L || expiry < 0L) return RetentionValidation.Rejected
+        if (created < 0L || expiry < 0L || conservativeNowMs < 0L) return RetentionValidation.Rejected
+        if (created > conservativeNowMs) return RetentionValidation.Rejected
         if (expiry < created) return RetentionValidation.Rejected
         val maxMs = policy.maxAvailabilityMillis
         if (created > Long.MAX_VALUE - maxMs) return RetentionValidation.Rejected

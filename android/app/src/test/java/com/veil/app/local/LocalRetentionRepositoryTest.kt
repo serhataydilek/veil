@@ -1,5 +1,8 @@
 package com.veil.app.local
 
+import com.veil.app.core.CoreBridgeSnapshot
+import com.veil.app.core.CoreBridgeStatus
+import com.veil.app.security.ExistingKeyResult
 import com.veil.app.security.TestLocalProtectionKeyStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -237,6 +240,78 @@ class LocalRetentionRepositoryTest {
         assertEquals(LocalConversationState.RESET, env.session.conversations.load(CONV)?.state)
         assertEquals("alias", env.session.conversations.load(CONV)?.localAlias)
         assertEquals(0, env.store.messageCount())
+    }
+
+    @Test
+    fun futureCreationTimestampIsRejectedOnInsert() {
+        val clock = FakeRetentionClock(wallMs = created, elapsedMs = 0)
+        val env = environment(clock)
+        insertShell(env)
+        assertFalse(
+            env.session.messages.insert(
+                message(expiry = created + 50_000, createdAt = created + 10_000),
+            ),
+        )
+        assertEquals(0, env.store.messageCount())
+    }
+
+    @Test
+    fun futureCreationCiphertextNeverRendersAndIsRemoved() {
+        val clock = FakeRetentionClock(wallMs = created, elapsedMs = 0)
+        val env = environment(clock)
+        insertShell(env)
+        val futureCreated = created + 60_000
+        val record = LocalMessageRecord(
+            messageId = "msg-future",
+            conversationId = CONV,
+            direction = LocalMessageDirection.OUTBOUND,
+            state = LocalMessageState.LOCAL_CREATED,
+            createdAtWallMs = futureCreated,
+            authenticatedExpiryWallMs = futureCreated + 1_000,
+            relayDeadlineWallMs = null,
+            body = "future",
+        )
+        val plaintext = LocalMessagePayloadCodec.encode(record)!!
+        val key = (env.keys.existingKey() as com.veil.app.security.ExistingKeyResult.Available).key
+        val aad = LocalRecordAad.encode(LocalRecordType.MESSAGE, record.messageId)!!
+        val blob = AesGcmLocalRecordCipher().encrypt(key, plaintext, aad)
+        val encoded = LocalRecordFormat.encode(blob)!!
+        env.store.insertMessage(
+            StoredMessageRow(
+                messageId = record.messageId,
+                conversationId = CONV,
+                expiryHintMs = futureCreated + 1_000,
+                ciphertext = encoded,
+            ),
+        )
+        assertEquals(LocalMessageLoadResult.Absent, env.session.messages.loadValidUnexpired("msg-future"))
+        assertTrue(listed(env).isEmpty())
+        assertEquals(0, env.store.messageCount())
+    }
+
+    @Test
+    fun resetPersistFailureRollsBackMessageDeletion() {
+        val cipher = FakeLocalRecordCipher()
+        val keys = TestLocalProtectionKeyStore().also { it.provisioningKey() }
+        val store = InMemoryLocalRecordStore()
+        val clock = FakeRetentionClock(wallMs = created, elapsedMs = 0)
+        val session = (
+            LocalStoreSession.open(keys, store, cipher, clock, policy) as LocalStoreOpenResult.Ready
+            ).session
+        val env = Env(session, store, keys)
+        insertShell(env)
+        assertTrue(session.messages.insert(message(expiry = created + 8_000)))
+        cipher.encryptFailure = { type ->
+            if (type == LocalRecordType.CONVERSATION) {
+                java.security.GeneralSecurityException("conversation encrypt failed")
+            } else {
+                null
+            }
+        }
+        assertFalse(session.resetConversationKeepingShell(CONV))
+        assertEquals(1, store.messageCount())
+        assertEquals(LocalConversationState.ESTABLISHING, session.conversations.load(CONV)?.state)
+        assertEquals("body", listed(env).single().body)
     }
 
     private fun environment(clock: FakeRetentionClock): Env {

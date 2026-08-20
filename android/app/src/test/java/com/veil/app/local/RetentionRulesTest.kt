@@ -6,12 +6,13 @@ import org.junit.Test
 
 class RetentionRulesTest {
     private val policy = retentionPolicyFromSeconds(24L * 60 * 60)!!
+    private val now = 10_000L
 
     @Test
     fun validExpiryBeforeMaximumIsAccepted() {
         val created = 1_000L
         val expiry = created + policy.maxAvailabilityMillis - 1
-        val result = RetentionRules.validate(RetentionEnvelope(created, expiry, null), policy)
+        val result = RetentionRules.validate(RetentionEnvelope(created, expiry, null), policy, now)
         assertTrue(result is RetentionValidation.Accepted)
         assertEquals(expiry, (result as RetentionValidation.Accepted).effectiveDeadlineWallMs)
     }
@@ -20,7 +21,7 @@ class RetentionRulesTest {
     fun exactMaximumBoundaryIsAccepted() {
         val created = 5_000L
         val expiry = created + policy.maxAvailabilityMillis
-        val result = RetentionRules.validate(RetentionEnvelope(created, expiry, null), policy)
+        val result = RetentionRules.validate(RetentionEnvelope(created, expiry, null), policy, now)
         assertEquals(expiry, (result as RetentionValidation.Accepted).effectiveDeadlineWallMs)
     }
 
@@ -30,7 +31,7 @@ class RetentionRulesTest {
         val expiry = created + policy.maxAvailabilityMillis + 1
         assertEquals(
             RetentionValidation.Rejected,
-            RetentionRules.validate(RetentionEnvelope(created, expiry, null), policy),
+            RetentionRules.validate(RetentionEnvelope(created, expiry, null), policy, now),
         )
     }
 
@@ -38,7 +39,7 @@ class RetentionRulesTest {
     fun expiryBeforeCreationIsRejected() {
         assertEquals(
             RetentionValidation.Rejected,
-            RetentionRules.validate(RetentionEnvelope(50, 49, null), policy),
+            RetentionRules.validate(RetentionEnvelope(50, 49, null), policy, now),
         )
     }
 
@@ -47,8 +48,25 @@ class RetentionRulesTest {
         val created = Long.MAX_VALUE - 10
         assertEquals(
             RetentionValidation.Rejected,
-            RetentionRules.validate(RetentionEnvelope(created, created + 1, null), policy),
+            RetentionRules.validate(RetentionEnvelope(created, created + 1, null), policy, created),
         )
+    }
+
+    @Test
+    fun futureCreationRelativeToConservativeNowIsRejected() {
+        val created = now + 1
+        val expiry = created + 1_000
+        assertEquals(
+            RetentionValidation.Rejected,
+            RetentionRules.validate(RetentionEnvelope(created, expiry, null), policy, now),
+        )
+    }
+
+    @Test
+    fun creationExactlyAtConservativeNowIsAccepted() {
+        val expiry = now + 1_000
+        val result = RetentionRules.validate(RetentionEnvelope(now, expiry, null), policy, now)
+        assertEquals(expiry, (result as RetentionValidation.Accepted).effectiveDeadlineWallMs)
     }
 
     @Test
@@ -63,7 +81,7 @@ class RetentionRulesTest {
         val created = 100L
         val expiry = created + 5_000
         val relay = created + 1_000
-        val result = RetentionRules.validate(RetentionEnvelope(created, expiry, relay), policy)
+        val result = RetentionRules.validate(RetentionEnvelope(created, expiry, relay), policy, now)
         assertEquals(relay, (result as RetentionValidation.Accepted).effectiveDeadlineWallMs)
     }
 
@@ -72,7 +90,7 @@ class RetentionRulesTest {
         val created = 100L
         val expiry = created + 1_000
         val relay = created + 8_000
-        val result = RetentionRules.validate(RetentionEnvelope(created, expiry, relay), policy)
+        val result = RetentionRules.validate(RetentionEnvelope(created, expiry, relay), policy, now)
         assertEquals(expiry, (result as RetentionValidation.Accepted).effectiveDeadlineWallMs)
     }
 }

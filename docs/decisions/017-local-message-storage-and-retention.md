@@ -20,6 +20,7 @@ Phase 1G needs an auditable on-device store for conversation shells and ephemera
 - Keep `PRAGMA foreign_keys = ON` and `PRAGMA secure_delete = ON`. Do not enable WAL; use DELETE journal mode. `secure_delete` is best-effort and does not guarantee forensic erasure.
 - Rust `maxMessageAvailabilitySeconds` is the production maximum-retention authority. Kotlin must not duplicate a 24-hour policy constant. Unavailable, incompatible, or invalid Rust policy fails closed and does not substitute 24 hours.
 - Persist an encrypted conservative time lower bound (`wallLowerBoundMs`, elapsed realtime at observation, boot observation). Same-boot elapsed time advances the bound if wall time rolls back. Wall jumps forward may expire early. New or ambiguous boots, and missing/corrupt time state while messages exist, purge message rows early without destroying conversation shells.
+- Reject authenticated creation timestamps after the conservative lower bound (zero skew until a reviewed allowance exists). Database expiry hints remain untrusted and cannot extend visibility.
 - Purge expired message content before `LocalDataStatus.READY`. CHECKING/PURGING UI is a neutral wait. Failure statuses do not render retained messages or leak counts/aliases.
 - Composer text stays in process memory. No plaintext draft persistence. DESTROYED conversations are removed after cleanup rather than retained as a tombstone graph.
 - Unknown database schema versions fail closed without destructive migration.

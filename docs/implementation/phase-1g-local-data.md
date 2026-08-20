@@ -37,7 +37,7 @@ Inner plaintext codecs are `VLC1` (conversation), `VLM1` (message), and `VLT1` (
 
 Production initialization loads `RustCoreBridge` / `core_policy_snapshot()`. Only `AVAILABLE` with a valid `maxMessageAvailabilitySeconds` proceeds. Kotlin production code does not contain a 24-hour constant.
 
-Effective deadline is the earliest of authenticated expiry and optional relay deadline, never later than `createdAt + maxMessageAvailability`. Replay/lifecycle updates cannot extend an accepted deadline. Expired plaintext is never returned.
+Effective deadline is the earliest of authenticated expiry and optional relay deadline, never later than `createdAt + maxMessageAvailability`. Creation timestamps after the conservative clock lower bound are rejected with zero skew until a reviewed allowance exists. Replay/lifecycle updates cannot extend an accepted deadline. Expired plaintext is never returned.
 
 `AndroidRetentionClock` is the only production wall/elapsed/boot boundary. On API 26+ it reads `Settings.Global.BOOT_COUNT`. Repositories and UI do not call `System.currentTimeMillis()` or `SystemClock.elapsedRealtime()` directly.
 

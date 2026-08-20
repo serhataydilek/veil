@@ -121,16 +121,23 @@ internal class LocalStoreSession(
     }
 
     fun resetConversationKeepingShell(conversationId: String): Boolean =
-        store.transact {
-            val shell = conversations.load(conversationId) ?: return@transact false
-            messages.deleteAllForConversation(conversationId)
-            conversations.upsert(
-                shell.copy(
-                    state = LocalConversationState.RESET,
-                    updatedAtWallMs = clock.wallClockMillis(),
-                ),
-            )
-            true
+        try {
+            store.transact {
+                val shell = conversations.load(conversationId) ?: return@transact false
+                messages.deleteAllForConversation(conversationId)
+                val persisted = conversations.upsert(
+                    shell.copy(
+                        state = LocalConversationState.RESET,
+                        updatedAtWallMs = clock.wallClockMillis(),
+                    ),
+                )
+                if (!persisted) {
+                    error("conversation reset persist failed")
+                }
+                true
+            }
+        } catch (_: RuntimeException) {
+            false
         }
 
     fun close() {
@@ -269,12 +276,13 @@ internal class LocalMessageRepository(
 ) {
     fun insert(record: LocalMessageRecord): Boolean {
         if (!validLocalId(record.messageId) || !validLocalId(record.conversationId)) return false
-        val validation = RetentionRules.validate(record.envelope(), policy)
-        if (validation !is RetentionValidation.Accepted) return false
+        if (record.state == LocalMessageState.EXPIRED) return false
         val now = when (val current = conservativeNow()) {
             is ConservativeNowResult.Available -> current.nowMs
             ConservativeNowResult.KeyUnavailable, ConservativeNowResult.Unavailable -> return false
         }
+        val validation = RetentionRules.validate(record.envelope(), policy, now)
+        if (validation !is RetentionValidation.Accepted) return false
         if (RetentionRules.isExpired(validation.effectiveDeadlineWallMs, now)) return false
         if (store.loadConversation(record.conversationId) == null) return false
         val ciphertext = encryptMessage(record) ?: return false
@@ -335,9 +343,10 @@ internal class LocalMessageRepository(
             -> return false
         }
         val updated = current.copy(state = newState)
-        val validation = RetentionRules.validate(updated.envelope(), policy)
+        if (updated.state == LocalMessageState.EXPIRED) return false
+        val validation = RetentionRules.validate(updated.envelope(), policy, now)
         if (validation !is RetentionValidation.Accepted) return false
-        val previous = RetentionRules.validate(current.envelope(), policy)
+        val previous = RetentionRules.validate(current.envelope(), policy, now)
         if (previous !is RetentionValidation.Accepted) return false
         if (validation.effectiveDeadlineWallMs > previous.effectiveDeadlineWallMs) return false
         if (updated.authenticatedExpiryWallMs != current.authenticatedExpiryWallMs) return false
@@ -406,7 +415,7 @@ internal class LocalMessageRepository(
             ) {
                 return dropCorrupt()
             }
-            val validation = RetentionRules.validate(parsed.envelope(), policy)
+            val validation = RetentionRules.validate(parsed.envelope(), policy, nowMs)
             if (validation !is RetentionValidation.Accepted) {
                 return dropCorrupt()
             }

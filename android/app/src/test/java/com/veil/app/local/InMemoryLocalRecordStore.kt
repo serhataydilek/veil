@@ -8,9 +8,38 @@ internal class InMemoryLocalRecordStore : LocalRecordStore {
     private val meta = linkedMapOf<String, ByteArray>()
     private val conversations = linkedMapOf<String, StoredConversationRow>()
     private val messages = linkedMapOf<String, StoredMessageRow>()
+    private var transactionDepth = 0
+    private var rollbackOnly = false
+    private var metaSnapshot: Map<String, ByteArray>? = null
+    private var conversationsSnapshot: Map<String, StoredConversationRow>? = null
+    private var messagesSnapshot: Map<String, StoredMessageRow>? = null
     var failMetaWrites = false
 
-    override fun <T> transact(block: () -> T): T = lock.withLock { block() }
+    override fun <T> transact(block: () -> T): T = lock.withLock {
+        if (transactionDepth == 0) {
+            metaSnapshot = meta.mapValues { it.value.copyOf() }
+            conversationsSnapshot = conversations.mapValues { it.value.copy(ciphertext = it.value.ciphertext.copyOf()) }
+            messagesSnapshot = messages.mapValues { copyMessage(it.value) }
+            rollbackOnly = false
+        }
+        transactionDepth += 1
+        try {
+            val result = block()
+            return result
+        } catch (error: Throwable) {
+            rollbackOnly = true
+            throw error
+        } finally {
+            transactionDepth -= 1
+            if (transactionDepth == 0) {
+                if (rollbackOnly) {
+                    restoreSnapshots()
+                }
+                clearSnapshots()
+                rollbackOnly = false
+            }
+        }
+    }
 
     override fun insertConversation(row: StoredConversationRow) {
         lock.withLock {
@@ -119,6 +148,23 @@ internal class InMemoryLocalRecordStore : LocalRecordStore {
 
     fun replaceMeta(metaKey: String, ciphertext: ByteArray) {
         upsertMeta(metaKey, ciphertext)
+    }
+
+    private fun restoreSnapshots() {
+        meta.clear()
+        metaSnapshot?.forEach { (key, value) -> meta[key] = value.copyOf() }
+        conversations.clear()
+        conversationsSnapshot?.forEach { (key, value) ->
+            conversations[key] = value.copy(ciphertext = value.ciphertext.copyOf())
+        }
+        messages.clear()
+        messagesSnapshot?.forEach { (key, value) -> messages[key] = copyMessage(value) }
+    }
+
+    private fun clearSnapshots() {
+        metaSnapshot = null
+        conversationsSnapshot = null
+        messagesSnapshot = null
     }
 
     private fun copyMessage(row: StoredMessageRow) = StoredMessageRow(
