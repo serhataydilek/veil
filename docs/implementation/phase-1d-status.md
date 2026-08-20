@@ -24,9 +24,11 @@
 - Rendezvous protocol implementation.
 - E2EE / secure-session implementation.
 - Message encryption or decryption.
-- Networking, `INTERNET` permission, backend, database, push, and message storage.
+- Networking, `INTERNET` permission, backend, push, and protocol message transport.
 - Handwritten JNI / `unsafe` Rust ABI.
 - Making any security capability available.
+
+Local encrypted conversation/message persistence is Phase 1G (`docs/implementation/phase-1g-local-data.md`), not this FFI phase.
 
 ## Deferred
 
