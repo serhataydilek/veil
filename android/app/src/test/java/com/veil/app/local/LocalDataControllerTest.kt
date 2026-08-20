@@ -2,6 +2,7 @@ package com.veil.app.local
 
 import com.veil.app.core.CoreBridgeSnapshot
 import com.veil.app.core.CoreBridgeStatus
+import com.veil.app.security.ProtectionStatus
 import com.veil.app.security.TestLocalProtectionKeyStore
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -126,6 +127,74 @@ class LocalDataControllerTest {
             LocalDataStatus.INCOMPATIBLE,
             runBlocking { controller.status.first { it == LocalDataStatus.INCOMPATIBLE } },
         )
+        controller.cancel()
+    }
+
+    @Test
+    fun protectionDropDuringPurgeNeverPublishesReady() {
+        val store = InMemoryLocalRecordStore()
+        val keys = TestLocalProtectionKeyStore().also { it.provisioningKey() }
+        val clock = FakeRetentionClock(wallMs = created, elapsedMs = 0)
+        val setup = open(keys, store, clock)
+        assertTrue(
+            setup.conversations.upsert(
+                LocalConversationShell("conv-1", LocalConversationState.ESTABLISHING, null, created, created),
+            ),
+        )
+        assertTrue(
+            setup.messages.insert(
+                LocalMessageRecord(
+                    messageId = "msg-1",
+                    conversationId = "conv-1",
+                    direction = LocalMessageDirection.OUTBOUND,
+                    state = LocalMessageState.LOCAL_CREATED,
+                    createdAtWallMs = created,
+                    authenticatedExpiryWallMs = created + 5_000,
+                    relayDeadlineWallMs = null,
+                    body = "secret-body",
+                ),
+            ),
+        )
+        setup.close()
+
+        lateinit var controller: LocalDataController
+        val firstPurge = AtomicBoolean(true)
+        val gated = object : LocalRecordStore by store {
+            override fun deleteMessagesWithExpiryHintAtOrBefore(hintMs: Long): Int {
+                if (firstPurge.compareAndSet(true, false)) {
+                    controller.onProtectionStatus(ProtectionStatus.KEY_UNAVAILABLE)
+                }
+                return store.deleteMessagesWithExpiryHintAtOrBefore(hintMs)
+            }
+        }
+        controller = LocalDataController(
+            keyStore = keys,
+            storeFactory = LocalRecordStoreFactory { LocalStoreFactoryResult.Opened(gated) },
+            cipher = AesGcmLocalRecordCipher(),
+            clock = clock,
+            policyLoader = RustRetentionPolicyLoader {
+                CoreBridgeSnapshot(
+                    status = CoreBridgeStatus.AVAILABLE,
+                    maxMessageAvailabilitySeconds = policySeconds,
+                )
+            },
+            workerDispatcher = Dispatchers.Unconfined,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        controller.onProtectionStatus(ProtectionStatus.READY)
+        assertEquals(
+            LocalDataStatus.WAITING_FOR_PROTECTION,
+            runBlocking {
+                controller.status.first {
+                    it == LocalDataStatus.WAITING_FOR_PROTECTION ||
+                        it == LocalDataStatus.READY ||
+                        it == LocalDataStatus.ERROR
+                }
+            },
+        )
+        assertNull(controller.renderableMessages("conv-1"))
+        assertNull(controller.sessionForTests())
+        assertEquals(1, store.messageCount())
         controller.cancel()
     }
 

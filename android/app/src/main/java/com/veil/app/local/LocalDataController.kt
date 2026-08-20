@@ -8,6 +8,7 @@ import com.veil.app.security.ProtectionStatus
 import java.security.GeneralSecurityException
 import java.security.ProviderException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -84,15 +85,22 @@ internal class LocalDataController(
     private val mutableStatus = MutableStateFlow(LocalDataStatus.WAITING_FOR_PROTECTION)
     val status: StateFlow<LocalDataStatus> = mutableStatus
     private val starting = AtomicBoolean(false)
+    private val startEpoch = AtomicInteger(0)
+    @Volatile
+    private var protectionReady = false
     @Volatile
     private var session: LocalStoreSession? = null
 
     fun onProtectionStatus(protectionStatus: ProtectionStatus) {
         if (protectionStatus == ProtectionStatus.READY) {
+            protectionReady = true
             start()
         } else if (protectionStatus != ProtectionStatus.CHECKING &&
             protectionStatus != ProtectionStatus.PROVISIONING
         ) {
+            // Invalidate any in-flight startup so it cannot publish READY.
+            protectionReady = false
+            startEpoch.incrementAndGet()
             closeSession()
             mutableStatus.value = LocalDataStatus.WAITING_FOR_PROTECTION
         }
@@ -100,18 +108,36 @@ internal class LocalDataController(
 
     fun start() {
         if (!starting.compareAndSet(false, true)) return
+        // Explicit start authorizes this attempt; a concurrent protection drop bumps the epoch.
+        protectionReady = true
+        val epoch = startEpoch.get()
         scope.launch {
             mutableStatus.value = LocalDataStatus.CHECKING
             closeSession()
             var pending: LocalStoreSession? = null
             try {
+                if (!startupStillValid(epoch)) {
+                    mutableStatus.value = LocalDataStatus.WAITING_FOR_PROTECTION
+                    return@launch
+                }
                 val opened = withContext(workerDispatcher) { openSession() }
+                if (!startupStillValid(epoch)) {
+                    if (opened is LocalStartupOpen.PendingPurge) opened.session.close()
+                    mutableStatus.value = LocalDataStatus.WAITING_FOR_PROTECTION
+                    return@launch
+                }
                 when (opened) {
                     is LocalStartupOpen.Failed -> mutableStatus.value = opened.status
                     is LocalStartupOpen.PendingPurge -> {
                         pending = opened.session
                         mutableStatus.value = LocalDataStatus.PURGING
                         val refreshed = withContext(workerDispatcher) { opened.session.refreshTimeAndPurge() }
+                        if (!startupStillValid(epoch)) {
+                            opened.session.close()
+                            pending = null
+                            mutableStatus.value = LocalDataStatus.WAITING_FOR_PROTECTION
+                            return@launch
+                        }
                         when (refreshed) {
                             is TimeRefreshResult.Advanced -> {
                                 session = opened.session
@@ -145,14 +171,27 @@ internal class LocalDataController(
             } catch (_: RuntimeException) {
                 pending?.close()
                 closeSession()
-                mutableStatus.value = LocalDataStatus.ERROR
+                mutableStatus.value = if (!startupStillValid(epoch)) {
+                    LocalDataStatus.WAITING_FOR_PROTECTION
+                } else {
+                    LocalDataStatus.ERROR
+                }
             } finally {
                 starting.set(false)
+                // Protection may have returned to READY while this attempt was invalidated.
+                if (protectionReady &&
+                    mutableStatus.value == LocalDataStatus.WAITING_FOR_PROTECTION &&
+                    startEpoch.get() != epoch
+                ) {
+                    start()
+                }
             }
         }
     }
 
     fun cancel() {
+        protectionReady = false
+        startEpoch.incrementAndGet()
         closeSession()
         scope.cancel()
     }
@@ -191,6 +230,9 @@ internal class LocalDataController(
     }
 
     fun sessionForTests(): LocalStoreSession? = session?.takeIf { mutableStatus.value == LocalDataStatus.READY }
+
+    private fun startupStillValid(epoch: Int): Boolean =
+        protectionReady && startEpoch.get() == epoch
 
     private fun openSession(): LocalStartupOpen {
         val policy = when (val loaded = policyLoader.load()) {
