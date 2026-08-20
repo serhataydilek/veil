@@ -3,8 +3,10 @@ package com.veil.app.local
 import com.veil.app.security.ProtectedBlob
 import com.veil.app.security.generatedAesKey
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalRecordCryptoTest {
@@ -22,12 +24,12 @@ class LocalRecordCryptoTest {
     @Test
     fun recordClassesUseDistinctAad() {
         assertNotEquals(
-            LocalRecordAad.encode(LocalRecordType.CONVERSATION, "same-id").toList(),
-            LocalRecordAad.encode(LocalRecordType.MESSAGE, "same-id").toList(),
+            LocalRecordAad.encode(LocalRecordType.CONVERSATION, "same-id")!!.toList(),
+            LocalRecordAad.encode(LocalRecordType.MESSAGE, "same-id")!!.toList(),
         )
         assertNotEquals(
-            LocalRecordAad.encode(LocalRecordType.MESSAGE, "same-id").toList(),
-            LocalRecordAad.encode(LocalRecordType.TIME_BOUND, "same-id").toList(),
+            LocalRecordAad.encode(LocalRecordType.MESSAGE, "same-id")!!.toList(),
+            LocalRecordAad.encode(LocalRecordType.TIME_BOUND, "same-id")!!.toList(),
         )
     }
 
@@ -39,16 +41,25 @@ class LocalRecordCryptoTest {
         val blob = cipher.encrypt(
             key,
             plaintext,
-            LocalRecordAad.encode(LocalRecordType.MESSAGE, "msg-1"),
+            LocalRecordAad.encode(LocalRecordType.MESSAGE, "msg-1")!!,
         )
         try {
-            cipher.decrypt(key, blob, LocalRecordAad.encode(LocalRecordType.CONVERSATION, "msg-1"))
+            cipher.decrypt(key, blob, LocalRecordAad.encode(LocalRecordType.CONVERSATION, "msg-1")!!)
             throw AssertionError("cross-type AAD must fail closed")
         } catch (_: Exception) {
         }
         assertEquals(
             "record",
-            cipher.decrypt(key, blob, LocalRecordAad.encode(LocalRecordType.MESSAGE, "msg-1")).decodeToString(),
+            cipher.decrypt(key, blob, LocalRecordAad.encode(LocalRecordType.MESSAGE, "msg-1")!!).decodeToString(),
         )
+    }
+
+    @Test
+    fun opaqueLocalIdsRejectUnicodeAndOversizeWithoutThrowing() {
+        assertNull(LocalRecordAad.encode(LocalRecordType.MESSAGE, "café"))
+        assertNull(LocalRecordAad.encode(LocalRecordType.CONVERSATION, "消息"))
+        assertNull(LocalRecordAad.encode(LocalRecordType.MESSAGE, "a".repeat(LocalRecordAad.MAX_RECORD_ID_BYTES + 1)))
+        assertFalse(validLocalId("idé"))
+        assertTrue(validLocalId("conv-1"))
     }
 }

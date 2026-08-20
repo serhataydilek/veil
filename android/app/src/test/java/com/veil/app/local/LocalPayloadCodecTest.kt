@@ -63,6 +63,18 @@ class LocalPayloadCodecTest {
     }
 
     @Test
+    fun unicodeConversationIdIsRejected() {
+        val shell = LocalConversationShell(
+            conversationId = "café",
+            state = LocalConversationState.ESTABLISHING,
+            localAlias = "desk",
+            createdAtWallMs = 10,
+            updatedAtWallMs = 11,
+        )
+        assertNull(LocalConversationPayloadCodec.encode(shell))
+    }
+
+    @Test
     fun oversizedBodyIsRejected() {
         val body = "x".repeat(MAX_LOCAL_MESSAGE_BODY_BYTES + 1)
         val record = LocalMessageRecord(

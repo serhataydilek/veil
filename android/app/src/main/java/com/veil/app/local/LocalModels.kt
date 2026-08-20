@@ -1,6 +1,6 @@
 package com.veil.app.local
 
-internal const val MAX_LOCAL_ID_CHARS = 64
+internal const val MAX_LOCAL_ID_CHARS = LocalRecordAad.MAX_RECORD_ID_BYTES
 internal const val MAX_LOCAL_ALIAS_BYTES = 256
 internal const val MAX_LOCAL_MESSAGE_BODY_BYTES = 64 * 1024
 
@@ -48,6 +48,10 @@ internal data class LocalMessageRecord(
 )
 
 internal fun validLocalId(id: String): Boolean {
-    if (id.isEmpty() || id.length > MAX_LOCAL_ID_CHARS) return false
-    return id.all { ch -> ch.isLetterOrDigit() || ch == '-' || ch == '_' || ch == '.' }
+    if (id.isEmpty()) return false
+    val bytes = id.encodeToByteArray()
+    if (bytes.size > LocalRecordAad.MAX_RECORD_ID_BYTES) return false
+    return id.all { ch ->
+        ch in 'A'..'Z' || ch in 'a'..'z' || ch in '0'..'9' || ch == '-' || ch == '_' || ch == '.'
+    }
 }
