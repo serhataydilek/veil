@@ -53,10 +53,15 @@ ProtectionStatus READY
   → message-capable UI may render
 ```
 
-CHECKING/PURGING show a neutral wait. KEY_UNAVAILABLE, CORRUPT_OR_UNREADABLE, POLICY_UNAVAILABLE, and INCOMPATIBLE do not render retained messages.
+CHECKING/PURGING show a neutral wait. KEY_UNAVAILABLE, CORRUPT_OR_UNREADABLE, POLICY_UNAVAILABLE, INCOMPATIBLE, and ERROR do not render retained messages. READY requires a confirmed persisted conservative time bound.
+
+Crypto failures are classified before any deletion:
+
+- Authenticated record corruption (malformed VLR1, AEAD/tag failure, payload/ID/expiry mismatch) may delete the affected row.
+- Key or provider unavailability (`ProviderException`, invalid/unavailable Keystore key, incomplete provider operation) preserves ciphertext, does not purge messages, does not provision a replacement key, and surfaces `KEY_UNAVAILABLE`.
 
 Home remains “No conversations”. Production UI does not create ACTIVE conversations, persist drafts, or expose a fake send path.
 
 ## Deletion boundary
 
-`LocalConversationRepository.destroy` removes messages and the relationship row. Reset deletes messages and may keep the shell. `LocalDataWiper.deleteDatabase` deletes `veil-local.db` for a future identity/local-storage destruction path. Phase 1B key-loss semantics are unchanged: missing keys do not regenerate and do not silently reset rows.
+`LocalConversationRepository.destroy` removes messages and the relationship row. Reset deletes messages and may keep the shell. `LocalDataWiper.deleteDatabase` deletes `veil-local.db` for a future identity/local-storage destruction path. Phase 1B key-loss semantics are unchanged: missing or unavailable keys do not regenerate, do not delete encrypted message rows, and are not classified as time-bound corruption. Missing or authenticated-corrupt time metadata with existing messages still purges message rows early.

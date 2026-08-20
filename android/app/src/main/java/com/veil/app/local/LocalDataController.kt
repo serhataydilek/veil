@@ -5,6 +5,8 @@ import com.veil.app.core.CoreBridgeStatus
 import com.veil.app.core.RustCoreBridge
 import com.veil.app.security.LocalProtectionKeyStore
 import com.veil.app.security.ProtectionStatus
+import java.security.GeneralSecurityException
+import java.security.ProviderException
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -65,6 +67,11 @@ internal fun interface LocalRecordStoreFactory {
     fun open(): LocalStoreFactoryResult
 }
 
+private sealed interface LocalStartupOpen {
+    data class PendingPurge(val session: LocalStoreSession) : LocalStartupOpen
+    data class Failed(val status: LocalDataStatus) : LocalStartupOpen
+}
+
 internal class LocalDataController(
     private val keyStore: LocalProtectionKeyStore,
     private val storeFactory: LocalRecordStoreFactory,
@@ -96,51 +103,47 @@ internal class LocalDataController(
         scope.launch {
             mutableStatus.value = LocalDataStatus.CHECKING
             closeSession()
+            var pending: LocalStoreSession? = null
             try {
-                val policy = withContext(workerDispatcher) { policyLoader.load() }
-                val loadedPolicy = when (policy) {
-                    RetentionPolicyLoad.Unavailable -> {
-                        mutableStatus.value = LocalDataStatus.POLICY_UNAVAILABLE
-                        return@launch
-                    }
-                    RetentionPolicyLoad.Incompatible -> {
-                        mutableStatus.value = LocalDataStatus.INCOMPATIBLE
-                        return@launch
-                    }
-                    is RetentionPolicyLoad.Available -> policy.policy
-                }
-                val factoryResult = withContext(workerDispatcher) { storeFactory.open() }
-                val store = when (factoryResult) {
-                    LocalStoreFactoryResult.Incompatible -> {
-                        mutableStatus.value = LocalDataStatus.INCOMPATIBLE
-                        return@launch
-                    }
-                    LocalStoreFactoryResult.Unreadable -> {
-                        mutableStatus.value = LocalDataStatus.CORRUPT_OR_UNREADABLE
-                        return@launch
-                    }
-                    is LocalStoreFactoryResult.Opened -> factoryResult.store
-                }
-                val opened = withContext(workerDispatcher) {
-                    LocalStoreSession.open(keyStore, store, cipher, clock, loadedPolicy)
-                }
+                val opened = withContext(workerDispatcher) { openSession() }
                 when (opened) {
-                    LocalStoreOpenResult.KeyUnavailable -> {
-                        store.close()
-                        mutableStatus.value = LocalDataStatus.KEY_UNAVAILABLE
-                    }
-                    LocalStoreOpenResult.Unreadable -> {
-                        store.close()
-                        mutableStatus.value = LocalDataStatus.CORRUPT_OR_UNREADABLE
-                    }
-                    is LocalStoreOpenResult.Ready -> {
+                    is LocalStartupOpen.Failed -> mutableStatus.value = opened.status
+                    is LocalStartupOpen.PendingPurge -> {
+                        pending = opened.session
                         mutableStatus.value = LocalDataStatus.PURGING
-                        withContext(workerDispatcher) { opened.session.refreshTimeAndPurge() }
-                        session = opened.session
-                        mutableStatus.value = LocalDataStatus.READY
+                        val refreshed = withContext(workerDispatcher) { opened.session.refreshTimeAndPurge() }
+                        when (refreshed) {
+                            is TimeRefreshResult.Advanced -> {
+                                session = opened.session
+                                pending = null
+                                mutableStatus.value = LocalDataStatus.READY
+                            }
+                            TimeRefreshResult.KeyUnavailable -> {
+                                opened.session.close()
+                                pending = null
+                                mutableStatus.value = LocalDataStatus.KEY_UNAVAILABLE
+                            }
+                            TimeRefreshResult.PersistFailed -> {
+                                opened.session.close()
+                                pending = null
+                                mutableStatus.value = LocalDataStatus.ERROR
+                            }
+                        }
                     }
+                }
+            } catch (_: ProviderException) {
+                pending?.close()
+                closeSession()
+                mutableStatus.value = LocalDataStatus.KEY_UNAVAILABLE
+            } catch (error: GeneralSecurityException) {
+                pending?.close()
+                closeSession()
+                mutableStatus.value = when (LocalCryptoFailures.classify(error)) {
+                    LocalCryptoFailureKind.KeyUnavailable -> LocalDataStatus.KEY_UNAVAILABLE
+                    LocalCryptoFailureKind.AuthenticationFailed -> LocalDataStatus.CORRUPT_OR_UNREADABLE
                 }
             } catch (_: RuntimeException) {
+                pending?.close()
                 closeSession()
                 mutableStatus.value = LocalDataStatus.ERROR
             } finally {
@@ -156,19 +159,67 @@ internal class LocalDataController(
 
     /**
      * Message-capable UI must not read this until [LocalDataStatus.READY].
-     * Expired plaintext is never returned.
+     * Expired plaintext is never returned. Key or provider unavailability is
+     * never presented as an empty conversation.
      */
     fun renderableMessages(conversationId: String): List<LocalMessageRecord>? {
         if (mutableStatus.value != LocalDataStatus.READY) return null
-        return session?.messages?.listValidUnexpired(conversationId)
+        val current = session ?: return null
+        return when (val result = current.messages.listValidUnexpired(conversationId)) {
+            is LocalMessageListResult.Available -> result.records
+            LocalMessageListResult.KeyUnavailable -> {
+                failClosed(LocalDataStatus.KEY_UNAVAILABLE)
+                null
+            }
+            LocalMessageListResult.Unavailable -> {
+                failClosed(LocalDataStatus.ERROR)
+                null
+            }
+        }
     }
 
     fun renderableConversations(): List<LocalConversationShell>? {
         if (mutableStatus.value != LocalDataStatus.READY) return null
-        return session?.conversations?.list()
+        val current = session ?: return null
+        return when (val result = current.conversations.list()) {
+            is LocalConversationListResult.Available -> result.shells
+            LocalConversationListResult.KeyUnavailable -> {
+                failClosed(LocalDataStatus.KEY_UNAVAILABLE)
+                null
+            }
+        }
     }
 
     fun sessionForTests(): LocalStoreSession? = session?.takeIf { mutableStatus.value == LocalDataStatus.READY }
+
+    private fun openSession(): LocalStartupOpen {
+        val policy = when (val loaded = policyLoader.load()) {
+            RetentionPolicyLoad.Unavailable -> return LocalStartupOpen.Failed(LocalDataStatus.POLICY_UNAVAILABLE)
+            RetentionPolicyLoad.Incompatible -> return LocalStartupOpen.Failed(LocalDataStatus.INCOMPATIBLE)
+            is RetentionPolicyLoad.Available -> loaded.policy
+        }
+        val store = when (val factoryResult = storeFactory.open()) {
+            LocalStoreFactoryResult.Incompatible -> return LocalStartupOpen.Failed(LocalDataStatus.INCOMPATIBLE)
+            LocalStoreFactoryResult.Unreadable -> return LocalStartupOpen.Failed(LocalDataStatus.CORRUPT_OR_UNREADABLE)
+            is LocalStoreFactoryResult.Opened -> factoryResult.store
+        }
+        return when (val opened = LocalStoreSession.open(keyStore, store, cipher, clock, policy)) {
+            LocalStoreOpenResult.KeyUnavailable -> {
+                store.close()
+                LocalStartupOpen.Failed(LocalDataStatus.KEY_UNAVAILABLE)
+            }
+            LocalStoreOpenResult.Unreadable -> {
+                store.close()
+                LocalStartupOpen.Failed(LocalDataStatus.CORRUPT_OR_UNREADABLE)
+            }
+            is LocalStoreOpenResult.Ready -> LocalStartupOpen.PendingPurge(opened.session)
+        }
+    }
+
+    private fun failClosed(status: LocalDataStatus) {
+        closeSession()
+        mutableStatus.value = status
+    }
 
     private fun closeSession() {
         session?.close()

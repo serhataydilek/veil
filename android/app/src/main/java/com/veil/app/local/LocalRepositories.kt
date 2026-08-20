@@ -12,6 +12,41 @@ internal sealed interface LocalStoreOpenResult {
     data object Unreadable : LocalStoreOpenResult
 }
 
+internal sealed interface TimeRefreshResult {
+    data class Advanced(val bound: ConservativeTimeBound) : TimeRefreshResult
+    data object KeyUnavailable : TimeRefreshResult
+    data object PersistFailed : TimeRefreshResult
+}
+
+internal sealed interface ConservativeNowResult {
+    data class Available(val nowMs: Long) : ConservativeNowResult
+    data object KeyUnavailable : ConservativeNowResult
+    data object Unavailable : ConservativeNowResult
+}
+
+internal sealed interface LocalMessageListResult {
+    data class Available(val records: List<LocalMessageRecord>) : LocalMessageListResult
+    data object KeyUnavailable : LocalMessageListResult
+    data object Unavailable : LocalMessageListResult
+}
+
+internal sealed interface LocalMessageLoadResult {
+    data class Present(val record: LocalMessageRecord) : LocalMessageLoadResult
+    data object Absent : LocalMessageLoadResult
+    data object KeyUnavailable : LocalMessageLoadResult
+    data object Unavailable : LocalMessageLoadResult
+}
+
+internal sealed interface LocalConversationListResult {
+    data class Available(val shells: List<LocalConversationShell>) : LocalConversationListResult
+    data object KeyUnavailable : LocalConversationListResult
+}
+
+internal sealed interface LocalPurgeResult {
+    data class Removed(val count: Int) : LocalPurgeResult
+    data object KeyUnavailable : LocalPurgeResult
+}
+
 internal class LocalStoreSession(
     private val key: SecretKey,
     private val cipher: LocalRecordCipher,
@@ -20,48 +55,66 @@ internal class LocalStoreSession(
     private val policy: RetentionPolicy,
 ) {
     val conversations = LocalConversationRepository(key, cipher, store)
-    val messages = LocalMessageRepository(key, cipher, store, policy) { conservativeNowMs() }
+    val messages = LocalMessageRepository(key, cipher, store, policy, ::conservativeNow)
     private val timeStore = ConservativeTimeStore(key, cipher, store)
     private var refreshingTime = false
     private var lastBound: ConservativeTimeBound? = null
 
-    fun refreshTimeAndPurge(): ConservativeTimeBound {
+    fun refreshTimeAndPurge(): TimeRefreshResult {
         if (refreshingTime) {
-            return lastBound ?: ConservativeTime.initialize(clock)
+            val bound = lastBound ?: return TimeRefreshResult.PersistFailed
+            return TimeRefreshResult.Advanced(bound)
         }
         refreshingTime = true
         return try {
             store.transact {
                 val loaded = timeStore.load()
                 val hasMessages = store.messageCount() > 0
-                val bound = when (loaded) {
+                when (loaded) {
+                    TimeBoundLoad.KeyUnavailable -> TimeRefreshResult.KeyUnavailable
                     TimeBoundLoad.Missing, TimeBoundLoad.Corrupt -> {
                         if (hasMessages) store.deleteAllMessages()
                         val initialized = ConservativeTime.initialize(clock)
-                        timeStore.save(initialized)
-                        initialized
+                        when (timeStore.save(initialized)) {
+                            TimeBoundSaveResult.Saved -> {
+                                lastBound = initialized
+                                TimeRefreshResult.Advanced(initialized)
+                            }
+                            TimeBoundSaveResult.KeyUnavailable -> TimeRefreshResult.KeyUnavailable
+                            TimeBoundSaveResult.PersistFailed -> TimeRefreshResult.PersistFailed
+                        }
                     }
                     is TimeBoundLoad.Present -> {
                         val advanced = ConservativeTime.advance(loaded.bound, clock)
-                        timeStore.save(advanced.bound)
-                        lastBound = advanced.bound
-                        if (advanced.expireAllMessages) {
-                            store.deleteAllMessages()
-                        } else {
-                            messages.purgeExpired(advanced.bound.wallLowerBoundMs)
+                        when (timeStore.save(advanced.bound)) {
+                            TimeBoundSaveResult.Saved -> {
+                                lastBound = advanced.bound
+                                if (advanced.expireAllMessages) {
+                                    store.deleteAllMessages()
+                                    TimeRefreshResult.Advanced(advanced.bound)
+                                } else {
+                                    when (val purged = messages.purgeExpired(advanced.bound.wallLowerBoundMs)) {
+                                        is LocalPurgeResult.Removed -> TimeRefreshResult.Advanced(advanced.bound)
+                                        LocalPurgeResult.KeyUnavailable -> TimeRefreshResult.KeyUnavailable
+                                    }
+                                }
+                            }
+                            TimeBoundSaveResult.KeyUnavailable -> TimeRefreshResult.KeyUnavailable
+                            TimeBoundSaveResult.PersistFailed -> TimeRefreshResult.PersistFailed
                         }
-                        advanced.bound
                     }
                 }
-                lastBound = bound
-                bound
             }
         } finally {
             refreshingTime = false
         }
     }
 
-    fun conservativeNowMs(): Long = refreshTimeAndPurge().wallLowerBoundMs
+    fun conservativeNow(): ConservativeNowResult = when (val result = refreshTimeAndPurge()) {
+        is TimeRefreshResult.Advanced -> ConservativeNowResult.Available(result.bound.wallLowerBoundMs)
+        TimeRefreshResult.KeyUnavailable -> ConservativeNowResult.KeyUnavailable
+        TimeRefreshResult.PersistFailed -> ConservativeNowResult.Unavailable
+    }
 
     fun destroyConversation(conversationId: String) {
         store.transact { conversations.destroy(conversationId) }
@@ -96,6 +149,11 @@ internal class LocalStoreSession(
                 keyStore.existingKey()
             } catch (_: ProviderException) {
                 return LocalStoreOpenResult.KeyUnavailable
+            } catch (error: GeneralSecurityException) {
+                return when (LocalCryptoFailures.classify(error)) {
+                    LocalCryptoFailureKind.KeyUnavailable -> LocalStoreOpenResult.KeyUnavailable
+                    LocalCryptoFailureKind.AuthenticationFailed -> LocalStoreOpenResult.Unreadable
+                }
             }
             val key = when (existing) {
                 is ExistingKeyResult.Available -> existing.key
@@ -104,10 +162,13 @@ internal class LocalStoreSession(
             }
             return try {
                 LocalStoreOpenResult.Ready(LocalStoreSession(key, cipher, store, clock, policy))
-            } catch (_: GeneralSecurityException) {
-                LocalStoreOpenResult.Unreadable
             } catch (_: ProviderException) {
-                LocalStoreOpenResult.Unreadable
+                LocalStoreOpenResult.KeyUnavailable
+            } catch (error: GeneralSecurityException) {
+                when (LocalCryptoFailures.classify(error)) {
+                    LocalCryptoFailureKind.KeyUnavailable -> LocalStoreOpenResult.KeyUnavailable
+                    LocalCryptoFailureKind.AuthenticationFailed -> LocalStoreOpenResult.Unreadable
+                }
             }
         }
     }
@@ -136,11 +197,23 @@ internal class LocalConversationRepository(
 
     fun load(conversationId: String): LocalConversationShell? {
         val row = store.loadConversation(conversationId) ?: return null
-        return decryptConversation(row)
+        return when (val decrypted = decryptConversation(row)) {
+            is LocalDecryptResult.Success -> decrypted.value
+            LocalDecryptResult.KeyUnavailable, LocalDecryptResult.AuthenticationFailed, LocalDecryptResult.Unreadable -> null
+        }
     }
 
-    fun list(): List<LocalConversationShell> =
-        store.listConversations().mapNotNull { decryptConversation(it) }
+    fun list(): LocalConversationListResult {
+        val shells = ArrayList<LocalConversationShell>()
+        for (row in store.listConversations()) {
+            when (val decrypted = decryptConversation(row)) {
+                is LocalDecryptResult.Success -> shells.add(decrypted.value)
+                LocalDecryptResult.KeyUnavailable -> return LocalConversationListResult.KeyUnavailable
+                LocalDecryptResult.AuthenticationFailed, LocalDecryptResult.Unreadable -> Unit
+            }
+        }
+        return LocalConversationListResult.Available(shells)
+    }
 
     fun delete(conversationId: String) {
         store.deleteConversation(conversationId)
@@ -157,32 +230,30 @@ internal class LocalConversationRepository(
     private fun encryptConversation(shell: LocalConversationShell): ByteArray? {
         val plaintext = LocalConversationPayloadCodec.encode(shell) ?: return null
         return try {
-            val aad = LocalRecordAad.encode(LocalRecordType.CONVERSATION, shell.conversationId)
-            val blob = cipher.encrypt(key, plaintext, aad)
-            LocalRecordFormat.encode(blob)
-        } catch (_: GeneralSecurityException) {
-            null
-        } catch (_: ProviderException) {
-            null
+            val aad = LocalRecordAad.encode(LocalRecordType.CONVERSATION, shell.conversationId) ?: return null
+            when (val encrypted = cipher.encryptLocal(key, plaintext, aad)) {
+                is LocalEncryptResult.Success -> LocalRecordFormat.encode(encrypted.blob)
+                LocalEncryptResult.KeyUnavailable, LocalEncryptResult.Failed -> null
+            }
         } finally {
             plaintext.wipe()
         }
     }
 
-    private fun decryptConversation(row: StoredConversationRow): LocalConversationShell? {
-        val blob = LocalRecordFormat.decode(row.ciphertext) ?: return null
-        val plaintext = try {
-            val aad = LocalRecordAad.encode(LocalRecordType.CONVERSATION, row.conversationId)
-            cipher.decrypt(key, blob, aad)
-        } catch (_: GeneralSecurityException) {
-            return null
-        } catch (_: ProviderException) {
-            return null
+    private fun decryptConversation(row: StoredConversationRow): LocalDecryptResult<LocalConversationShell> {
+        val blob = LocalRecordFormat.decode(row.ciphertext) ?: return LocalDecryptResult.Unreadable
+        val aad = LocalRecordAad.encode(LocalRecordType.CONVERSATION, row.conversationId)
+            ?: return LocalDecryptResult.Unreadable
+        val plaintext = when (val decrypted = cipher.decryptLocal(key, blob, aad)) {
+            is LocalDecryptResult.Success -> decrypted.value
+            LocalDecryptResult.AuthenticationFailed -> return LocalDecryptResult.AuthenticationFailed
+            LocalDecryptResult.KeyUnavailable -> return LocalDecryptResult.KeyUnavailable
+            LocalDecryptResult.Unreadable -> return LocalDecryptResult.Unreadable
         }
         return try {
-            val parsed = LocalConversationPayloadCodec.parse(plaintext) ?: return null
-            if (parsed.conversationId != row.conversationId) return null
-            parsed
+            val parsed = LocalConversationPayloadCodec.parse(plaintext) ?: return LocalDecryptResult.Unreadable
+            if (parsed.conversationId != row.conversationId) return LocalDecryptResult.Unreadable
+            LocalDecryptResult.Success(parsed)
         } finally {
             plaintext.wipe()
         }
@@ -194,13 +265,17 @@ internal class LocalMessageRepository(
     private val cipher: LocalRecordCipher,
     private val store: LocalRecordStore,
     private val policy: RetentionPolicy,
-    private val conservativeNow: () -> Long,
+    private val conservativeNow: () -> ConservativeNowResult,
 ) {
     fun insert(record: LocalMessageRecord): Boolean {
         if (!validLocalId(record.messageId) || !validLocalId(record.conversationId)) return false
         val validation = RetentionRules.validate(record.envelope(), policy)
         if (validation !is RetentionValidation.Accepted) return false
-        if (RetentionRules.isExpired(validation.effectiveDeadlineWallMs, conservativeNow())) return false
+        val now = when (val current = conservativeNow()) {
+            is ConservativeNowResult.Available -> current.nowMs
+            ConservativeNowResult.KeyUnavailable, ConservativeNowResult.Unavailable -> return false
+        }
+        if (RetentionRules.isExpired(validation.effectiveDeadlineWallMs, now)) return false
         if (store.loadConversation(record.conversationId) == null) return false
         val ciphertext = encryptMessage(record) ?: return false
         return try {
@@ -218,22 +293,47 @@ internal class LocalMessageRepository(
         }
     }
 
-    fun listValidUnexpired(conversationId: String): List<LocalMessageRecord> {
-        val now = conservativeNow()
-        return store.listMessagesForConversation(conversationId).mapNotNull { row ->
-            decodeValidUnexpired(row, now, deleteOnFailure = true)
-        }.sortedBy { it.createdAtWallMs }
+    fun listValidUnexpired(conversationId: String): LocalMessageListResult {
+        val now = when (val current = conservativeNow()) {
+            is ConservativeNowResult.Available -> current.nowMs
+            ConservativeNowResult.KeyUnavailable -> return LocalMessageListResult.KeyUnavailable
+            ConservativeNowResult.Unavailable -> return LocalMessageListResult.Unavailable
+        }
+        val records = ArrayList<LocalMessageRecord>()
+        for (row in store.listMessagesForConversation(conversationId)) {
+            when (val decoded = decodeValidUnexpired(row, now, deleteOnFailure = true)) {
+                is LocalMessageLoadResult.Present -> records.add(decoded.record)
+                LocalMessageLoadResult.Absent -> Unit
+                LocalMessageLoadResult.KeyUnavailable -> return LocalMessageListResult.KeyUnavailable
+                LocalMessageLoadResult.Unavailable -> return LocalMessageListResult.Unavailable
+            }
+        }
+        return LocalMessageListResult.Available(records.sortedBy { it.createdAtWallMs })
     }
 
-    fun loadValidUnexpired(messageId: String): LocalMessageRecord? {
-        val row = store.loadMessage(messageId) ?: return null
-        return decodeValidUnexpired(row, conservativeNow(), deleteOnFailure = true)
+    fun loadValidUnexpired(messageId: String): LocalMessageLoadResult {
+        val row = store.loadMessage(messageId) ?: return LocalMessageLoadResult.Absent
+        val now = when (val current = conservativeNow()) {
+            is ConservativeNowResult.Available -> current.nowMs
+            ConservativeNowResult.KeyUnavailable -> return LocalMessageLoadResult.KeyUnavailable
+            ConservativeNowResult.Unavailable -> return LocalMessageLoadResult.Unavailable
+        }
+        return decodeValidUnexpired(row, now, deleteOnFailure = true)
     }
 
     fun updateLifecycle(messageId: String, newState: LocalMessageState): Boolean {
         val row = store.loadMessage(messageId) ?: return false
-        val now = conservativeNow()
-        val current = decodeValidUnexpired(row, now, deleteOnFailure = true) ?: return false
+        val now = when (val current = conservativeNow()) {
+            is ConservativeNowResult.Available -> current.nowMs
+            ConservativeNowResult.KeyUnavailable, ConservativeNowResult.Unavailable -> return false
+        }
+        val current = when (val decoded = decodeValidUnexpired(row, now, deleteOnFailure = true)) {
+            is LocalMessageLoadResult.Present -> decoded.record
+            LocalMessageLoadResult.Absent,
+            LocalMessageLoadResult.KeyUnavailable,
+            LocalMessageLoadResult.Unavailable,
+            -> return false
+        }
         val updated = current.copy(state = newState)
         val validation = RetentionRules.validate(updated.envelope(), policy)
         if (validation !is RetentionValidation.Accepted) return false
@@ -265,14 +365,17 @@ internal class LocalMessageRepository(
         store.deleteMessagesForConversation(conversationId)
     }
 
-    fun purgeExpired(nowMs: Long): Int {
+    fun purgeExpired(nowMs: Long): LocalPurgeResult {
         var removed = store.deleteMessagesWithExpiryHintAtOrBefore(nowMs)
-        store.listAllMessages().forEach { row ->
-            if (decodeValidUnexpired(row, nowMs, deleteOnFailure = true) == null) {
-                removed += 1
+        for (row in store.listAllMessages()) {
+            when (val decoded = decodeValidUnexpired(row, nowMs, deleteOnFailure = true)) {
+                is LocalMessageLoadResult.Present -> Unit
+                LocalMessageLoadResult.Absent -> removed += 1
+                LocalMessageLoadResult.KeyUnavailable -> return LocalPurgeResult.KeyUnavailable
+                LocalMessageLoadResult.Unavailable -> return LocalPurgeResult.KeyUnavailable
             }
         }
-        return removed
+        return LocalPurgeResult.Removed(removed)
     }
 
     fun purgeAllMessages() {
@@ -283,21 +386,17 @@ internal class LocalMessageRepository(
         row: StoredMessageRow,
         nowMs: Long,
         deleteOnFailure: Boolean,
-    ): LocalMessageRecord? {
-        val blob = LocalRecordFormat.decode(row.ciphertext)
-        if (blob == null) {
+    ): LocalMessageLoadResult {
+        fun dropCorrupt(): LocalMessageLoadResult {
             if (deleteOnFailure) store.deleteMessage(row.messageId)
-            return null
+            return LocalMessageLoadResult.Absent
         }
-        val plaintext = try {
-            val aad = LocalRecordAad.encode(LocalRecordType.MESSAGE, row.messageId)
-            cipher.decrypt(key, blob, aad)
-        } catch (_: GeneralSecurityException) {
-            if (deleteOnFailure) store.deleteMessage(row.messageId)
-            return null
-        } catch (_: ProviderException) {
-            if (deleteOnFailure) store.deleteMessage(row.messageId)
-            return null
+        val blob = LocalRecordFormat.decode(row.ciphertext) ?: return dropCorrupt()
+        val aad = LocalRecordAad.encode(LocalRecordType.MESSAGE, row.messageId) ?: return dropCorrupt()
+        val plaintext = when (val decrypted = cipher.decryptLocal(key, blob, aad)) {
+            is LocalDecryptResult.Success -> decrypted.value
+            LocalDecryptResult.AuthenticationFailed, LocalDecryptResult.Unreadable -> return dropCorrupt()
+            LocalDecryptResult.KeyUnavailable -> return LocalMessageLoadResult.KeyUnavailable
         }
         try {
             val parsed = LocalMessagePayloadCodec.parse(plaintext)
@@ -305,27 +404,22 @@ internal class LocalMessageRepository(
                 parsed.messageId != row.messageId ||
                 parsed.conversationId != row.conversationId
             ) {
-                if (deleteOnFailure) store.deleteMessage(row.messageId)
-                return null
+                return dropCorrupt()
             }
             val validation = RetentionRules.validate(parsed.envelope(), policy)
             if (validation !is RetentionValidation.Accepted) {
-                if (deleteOnFailure) store.deleteMessage(row.messageId)
-                return null
+                return dropCorrupt()
             }
             if (row.expiryHintMs != validation.effectiveDeadlineWallMs) {
-                if (deleteOnFailure) store.deleteMessage(row.messageId)
-                return null
+                return dropCorrupt()
             }
             if (RetentionRules.isExpired(validation.effectiveDeadlineWallMs, nowMs)) {
-                if (deleteOnFailure) store.deleteMessage(row.messageId)
-                return null
+                return dropCorrupt()
             }
             if (parsed.state == LocalMessageState.EXPIRED) {
-                if (deleteOnFailure) store.deleteMessage(row.messageId)
-                return null
+                return dropCorrupt()
             }
-            return parsed
+            return LocalMessageLoadResult.Present(parsed)
         } finally {
             plaintext.wipe()
         }
@@ -334,13 +428,11 @@ internal class LocalMessageRepository(
     private fun encryptMessage(record: LocalMessageRecord): ByteArray? {
         val plaintext = LocalMessagePayloadCodec.encode(record) ?: return null
         return try {
-            val aad = LocalRecordAad.encode(LocalRecordType.MESSAGE, record.messageId)
-            val blob = cipher.encrypt(key, plaintext, aad)
-            LocalRecordFormat.encode(blob)
-        } catch (_: GeneralSecurityException) {
-            null
-        } catch (_: ProviderException) {
-            null
+            val aad = LocalRecordAad.encode(LocalRecordType.MESSAGE, record.messageId) ?: return null
+            when (val encrypted = cipher.encryptLocal(key, plaintext, aad)) {
+                is LocalEncryptResult.Success -> LocalRecordFormat.encode(encrypted.blob)
+                LocalEncryptResult.KeyUnavailable, LocalEncryptResult.Failed -> null
+            }
         } finally {
             plaintext.wipe()
         }
@@ -354,6 +446,13 @@ private sealed interface TimeBoundLoad {
     data class Present(val bound: ConservativeTimeBound) : TimeBoundLoad
     data object Missing : TimeBoundLoad
     data object Corrupt : TimeBoundLoad
+    data object KeyUnavailable : TimeBoundLoad
+}
+
+private sealed interface TimeBoundSaveResult {
+    data object Saved : TimeBoundSaveResult
+    data object KeyUnavailable : TimeBoundSaveResult
+    data object PersistFailed : TimeBoundSaveResult
 }
 
 private class ConservativeTimeStore(
@@ -364,13 +463,12 @@ private class ConservativeTimeStore(
     fun load(): TimeBoundLoad {
         val encoded = store.loadMeta(META_KEY) ?: return TimeBoundLoad.Missing
         val blob = LocalRecordFormat.decode(encoded) ?: return TimeBoundLoad.Corrupt
-        val plaintext = try {
-            val aad = LocalRecordAad.encode(LocalRecordType.TIME_BOUND, TimeBoundPayloadCodec.RECORD_ID)
-            cipher.decrypt(key, blob, aad)
-        } catch (_: GeneralSecurityException) {
-            return TimeBoundLoad.Corrupt
-        } catch (_: ProviderException) {
-            return TimeBoundLoad.Corrupt
+        val aad = LocalRecordAad.encode(LocalRecordType.TIME_BOUND, TimeBoundPayloadCodec.RECORD_ID)
+            ?: return TimeBoundLoad.Corrupt
+        val plaintext = when (val decrypted = cipher.decryptLocal(key, blob, aad)) {
+            is LocalDecryptResult.Success -> decrypted.value
+            LocalDecryptResult.AuthenticationFailed, LocalDecryptResult.Unreadable -> return TimeBoundLoad.Corrupt
+            LocalDecryptResult.KeyUnavailable -> return TimeBoundLoad.KeyUnavailable
         }
         return try {
             val parsed = TimeBoundPayloadCodec.parse(plaintext) ?: return TimeBoundLoad.Corrupt
@@ -380,13 +478,22 @@ private class ConservativeTimeStore(
         }
     }
 
-    fun save(bound: ConservativeTimeBound) {
-        val plaintext = TimeBoundPayloadCodec.encode(bound) ?: return
+    fun save(bound: ConservativeTimeBound): TimeBoundSaveResult {
+        val plaintext = TimeBoundPayloadCodec.encode(bound) ?: return TimeBoundSaveResult.PersistFailed
         try {
             val aad = LocalRecordAad.encode(LocalRecordType.TIME_BOUND, TimeBoundPayloadCodec.RECORD_ID)
-            val blob = cipher.encrypt(key, plaintext, aad)
-            val encoded = LocalRecordFormat.encode(blob) ?: return
-            store.upsertMeta(META_KEY, encoded)
+                ?: return TimeBoundSaveResult.PersistFailed
+            val blob = when (val encrypted = cipher.encryptLocal(key, plaintext, aad)) {
+                is LocalEncryptResult.Success -> encrypted.blob
+                LocalEncryptResult.KeyUnavailable -> return TimeBoundSaveResult.KeyUnavailable
+                LocalEncryptResult.Failed -> return TimeBoundSaveResult.PersistFailed
+            }
+            val encoded = LocalRecordFormat.encode(blob) ?: return TimeBoundSaveResult.PersistFailed
+            return if (store.upsertMeta(META_KEY, encoded)) {
+                TimeBoundSaveResult.Saved
+            } else {
+                TimeBoundSaveResult.PersistFailed
+            }
         } finally {
             plaintext.wipe()
         }

@@ -18,12 +18,12 @@ class LocalRetentionRepositoryTest {
         insertShell(env)
         val expiry = created + 5_000
         assertTrue(env.session.messages.insert(message(expiry = expiry)))
-        assertEquals("body", env.session.messages.listValidUnexpired(CONV).single().body)
+        assertEquals("body", listed(env).single().body)
 
         clock.wallMs = expiry
         clock.elapsedMs = 5_000
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
-        assertNull(env.session.messages.loadValidUnexpired("msg-1"))
+        assertTrue(listed(env).isEmpty())
+        assertEquals(LocalMessageLoadResult.Absent, env.session.messages.loadValidUnexpired("msg-1"))
     }
 
     @Test
@@ -35,7 +35,7 @@ class LocalRetentionRepositoryTest {
         assertTrue(env.session.messages.insert(message(expiry = expiry)))
         clock.elapsedMs = 2_000
         clock.wallMs = created - 50_000
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
     }
 
     @Test
@@ -45,7 +45,7 @@ class LocalRetentionRepositoryTest {
         insertShell(env)
         assertTrue(env.session.messages.insert(message(expiry = created + 10_000)))
         clock.wallMs = created + 10_000
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
     }
 
     @Test
@@ -55,7 +55,7 @@ class LocalRetentionRepositoryTest {
         insertShell(env)
         assertTrue(env.session.messages.insert(message(expiry = created + 3_000)))
         clock.elapsedMs = 3_000
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
     }
 
     @Test
@@ -66,7 +66,7 @@ class LocalRetentionRepositoryTest {
         assertTrue(env.session.messages.insert(message(expiry = created + policy.maxAvailabilityMillis)))
         clock.boot = BootObservation(bootCount = 2, reliable = true)
         clock.elapsedMs = 1
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
         assertEquals(CONV, env.session.conversations.load(CONV)?.conversationId)
         assertEquals(0, env.store.messageCount())
     }
@@ -78,8 +78,8 @@ class LocalRetentionRepositoryTest {
         insertShell(env)
         assertTrue(env.session.messages.insert(message(expiry = created + 8_000)))
         clock.boot = BootObservation(bootCount = null, reliable = false)
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
-        assertEquals(CONV, env.session.conversations.list().single().conversationId)
+        assertTrue(listed(env).isEmpty())
+        assertEquals(CONV, listedShells(env).single().conversationId)
     }
 
     @Test
@@ -89,7 +89,7 @@ class LocalRetentionRepositoryTest {
         insertShell(env)
         assertTrue(env.session.messages.insert(message(expiry = created + 8_000)))
         env.store.deleteMeta("time-bound")
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
         assertEquals(0, env.store.messageCount())
         assertEquals(CONV, env.session.conversations.load(CONV)?.conversationId)
     }
@@ -101,7 +101,7 @@ class LocalRetentionRepositoryTest {
         insertShell(env)
         assertTrue(env.session.messages.insert(message(expiry = created + 8_000)))
         env.store.replaceMeta("time-bound", byteArrayOf(1, 2, 3, 4))
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
         assertEquals(0, env.store.messageCount())
     }
 
@@ -116,7 +116,7 @@ class LocalRetentionRepositoryTest {
             ),
         )
         clock.elapsedMs = 1_000
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
     }
 
     @Test
@@ -130,7 +130,7 @@ class LocalRetentionRepositoryTest {
             ),
         )
         clock.elapsedMs = 1_000
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
     }
 
     @Test
@@ -140,12 +140,12 @@ class LocalRetentionRepositoryTest {
         insertShell(env)
         assertTrue(env.session.messages.insert(message(expiry = created + 2_000)))
         assertTrue(env.session.messages.updateLifecycle("msg-1", LocalMessageState.QUEUED))
-        val loaded = env.session.messages.loadValidUnexpired("msg-1")!!
+        val loaded = loadedMessage(env, "msg-1")
         assertEquals(LocalMessageState.QUEUED, loaded.state)
         assertEquals(created + 2_000, loaded.authenticatedExpiryWallMs)
         clock.elapsedMs = 2_000
         assertFalse(env.session.messages.updateLifecycle("msg-1", LocalMessageState.ENCRYPTED))
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
     }
 
     @Test
@@ -155,8 +155,8 @@ class LocalRetentionRepositoryTest {
         insertShell(env)
         assertTrue(env.session.messages.insert(message(expiry = created + 1_000)))
         env.store.tamperExpiryHint("msg-1", created + policy.maxAvailabilityMillis)
-        assertNull(env.session.messages.loadValidUnexpired("msg-1"))
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertEquals(LocalMessageLoadResult.Absent, env.session.messages.loadValidUnexpired("msg-1"))
+        assertTrue(listed(env).isEmpty())
         assertEquals(0, env.store.messageCount())
     }
 
@@ -172,7 +172,7 @@ class LocalRetentionRepositoryTest {
                 message(createdAt = Long.MAX_VALUE - 10, expiry = Long.MAX_VALUE - 9),
             ),
         )
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
     }
 
     @Test
@@ -182,9 +182,9 @@ class LocalRetentionRepositoryTest {
         insertShell(env)
         val expiry = created + policy.maxAvailabilityMillis
         assertTrue(env.session.messages.insert(message(expiry = expiry)))
-        assertEquals(1, env.session.messages.listValidUnexpired(CONV).size)
+        assertEquals(1, listed(env).size)
         clock.elapsedMs = policy.maxAvailabilityMillis
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(env).isEmpty())
     }
 
     @Test
@@ -201,6 +201,7 @@ class LocalRetentionRepositoryTest {
         val reopened = LocalStoreSession.open(keys, store, AesGcmLocalRecordCipher(), clock, policy)
         assertTrue(reopened is LocalStoreOpenResult.KeyUnavailable)
         assertEquals(before, keys.provisioningCalls)
+        assertEquals(1, store.messageCount())
     }
 
     @Test
@@ -210,8 +211,8 @@ class LocalRetentionRepositoryTest {
         insertShell(env)
         assertTrue(env.session.messages.insert(message(expiry = created + 8_000)))
         env.store.replaceMessageCiphertext("msg-1", ByteArray(64) { 7 })
-        assertNull(env.session.messages.loadValidUnexpired("msg-1"))
-        assertTrue(env.session.messages.listValidUnexpired(CONV).isEmpty())
+        assertEquals(LocalMessageLoadResult.Absent, env.session.messages.loadValidUnexpired("msg-1"))
+        assertTrue(listed(env).isEmpty())
         assertEquals(0, env.store.messageCount())
     }
 
@@ -251,6 +252,24 @@ class LocalRetentionRepositoryTest {
     ): LocalStoreSession {
         val opened = LocalStoreSession.open(keys, store, AesGcmLocalRecordCipher(), clock, policy)
         return (opened as LocalStoreOpenResult.Ready).session
+    }
+
+    private fun listed(env: Env): List<LocalMessageRecord> {
+        val result = env.session.messages.listValidUnexpired(CONV)
+        assertTrue("expected available messages, got $result", result is LocalMessageListResult.Available)
+        return (result as LocalMessageListResult.Available).records
+    }
+
+    private fun listedShells(env: Env): List<LocalConversationShell> {
+        val result = env.session.conversations.list()
+        assertTrue("expected available conversations, got $result", result is LocalConversationListResult.Available)
+        return (result as LocalConversationListResult.Available).shells
+    }
+
+    private fun loadedMessage(env: Env, messageId: String): LocalMessageRecord {
+        val result = env.session.messages.loadValidUnexpired(messageId)
+        assertTrue("expected present message, got $result", result is LocalMessageLoadResult.Present)
+        return (result as LocalMessageLoadResult.Present).record
     }
 
     private fun insertShell(env: Env) {

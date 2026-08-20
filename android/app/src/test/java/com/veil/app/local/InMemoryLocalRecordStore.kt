@@ -8,6 +8,7 @@ internal class InMemoryLocalRecordStore : LocalRecordStore {
     private val meta = linkedMapOf<String, ByteArray>()
     private val conversations = linkedMapOf<String, StoredConversationRow>()
     private val messages = linkedMapOf<String, StoredMessageRow>()
+    var failMetaWrites = false
 
     override fun <T> transact(block: () -> T): T = lock.withLock { block() }
 
@@ -88,8 +89,12 @@ internal class InMemoryLocalRecordStore : LocalRecordStore {
     override fun loadMeta(metaKey: String): ByteArray? =
         lock.withLock { meta[metaKey]?.copyOf() }
 
-    override fun upsertMeta(metaKey: String, ciphertext: ByteArray) {
-        lock.withLock { meta[metaKey] = ciphertext.copyOf() }
+    override fun upsertMeta(metaKey: String, ciphertext: ByteArray): Boolean {
+        lock.withLock {
+            if (failMetaWrites) return false
+            meta[metaKey] = ciphertext.copyOf()
+            return true
+        }
     }
 
     override fun deleteMeta(metaKey: String) {

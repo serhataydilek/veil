@@ -18,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -49,15 +50,15 @@ class AndroidLocalRetentionStoreTest {
         val first = openSession()
         assertTrue(first.conversations.upsert(shell()))
         assertTrue(first.messages.insert(message(CREATED + 60_000)))
-        val loaded = first.messages.listValidUnexpired(CONV).single()
+        val loaded = listed(first).single()
         assertEquals("hello", loaded.body)
         assertEquals("desk", first.conversations.load(CONV)?.localAlias)
         first.close()
 
         val second = openSession()
-        val retained = second.messages.listValidUnexpired(CONV).single()
+        val retained = listed(second).single()
         assertEquals("hello", retained.body)
-        assertEquals(LocalConversationState.ESTABLISHING, second.conversations.list().single().state)
+        assertEquals(LocalConversationState.ESTABLISHING, listedShells(second).single().state)
         second.close()
     }
 
@@ -67,7 +68,7 @@ class AndroidLocalRetentionStoreTest {
         assertTrue(session.conversations.upsert(shell()))
         assertTrue(session.messages.insert(message(CREATED + 1_000)))
         clock.elapsedMs = 1_000
-        assertTrue(session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(session).isEmpty())
         session.close()
         assertEquals(0, rawMessageCount())
     }
@@ -90,7 +91,7 @@ class AndroidLocalRetentionStoreTest {
         assertTrue(session.messages.insert(message(CREATED + 1_000)))
         session.conversations.deleteMessagesRetainingShell(CONV)
         assertEquals(CONV, session.conversations.load(CONV)?.conversationId)
-        assertTrue(session.messages.listValidUnexpired(CONV).isEmpty())
+        assertTrue(listed(session).isEmpty())
         session.close()
     }
 
@@ -108,8 +109,8 @@ class AndroidLocalRetentionStoreTest {
             db.execSQL("UPDATE messages SET ciphertext = ?", arrayOf(ByteArray(48) { 9 }))
         }
         val reopened = openSession()
-        assertNull(reopened.messages.loadValidUnexpired("msg-1"))
-        assertTrue(reopened.messages.listValidUnexpired(CONV).isEmpty())
+        assertEquals(LocalMessageLoadResult.Absent, reopened.messages.loadValidUnexpired("msg-1"))
+        assertTrue(listed(reopened).isEmpty())
         reopened.close()
         assertEquals(0, rawMessageCount())
     }
@@ -127,7 +128,51 @@ class AndroidLocalRetentionStoreTest {
         store.close()
         assertTrue(result is LocalStoreOpenResult.KeyUnavailable)
         assertEquals(before, recording.provisioningCalls)
+        assertEquals(1, rawMessageCount())
         assertTrue(context.getDatabasePath(TEST_DB).exists())
+    }
+
+    @Test
+    fun keystoreKeyUnavailablePreservesCiphertextAndNeverReady() {
+        val session = openSession()
+        assertTrue(session.conversations.upsert(shell()))
+        assertTrue(session.messages.insert(message(CREATED + 8_000)))
+        session.close()
+        val ciphertextBefore = rawMessageCiphertext().single()
+        val before = recording.provisioningCalls
+        assertTrue(keys.deleteKey())
+        val controller = LocalDataController(
+            keyStore = recording,
+            storeFactory = SqliteLocalRecordStoreFactory(context, TEST_DB),
+            cipher = AesGcmLocalRecordCipher(),
+            clock = clock,
+            policyLoader = RustRetentionPolicyLoader {
+                CoreBridgeSnapshot(
+                    status = CoreBridgeStatus.AVAILABLE,
+                    maxMessageAvailabilitySeconds = 24L * 60 * 60,
+                )
+            },
+            workerDispatcher = Dispatchers.Unconfined,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
+        )
+        controller.start()
+        assertEquals(
+            LocalDataStatus.KEY_UNAVAILABLE,
+            runBlocking {
+                controller.status.first {
+                    it != LocalDataStatus.CHECKING &&
+                        it != LocalDataStatus.WAITING_FOR_PROTECTION &&
+                        it != LocalDataStatus.PURGING
+                }
+            },
+        )
+        assertNotEquals(LocalDataStatus.READY, controller.status.value)
+        assertEquals(1, rawMessageCount())
+        assertTrue(ciphertextBefore.contentEquals(rawMessageCiphertext().single()))
+        assertTrue(context.getDatabasePath(TEST_DB).exists())
+        assertEquals(before, recording.provisioningCalls)
+        assertNull(controller.renderableMessages(CONV))
+        controller.cancel()
     }
 
     @Test
@@ -286,6 +331,33 @@ class AndroidLocalRetentionStoreTest {
         relayDeadlineWallMs = null,
         body = "hello",
     )
+
+    private fun listed(session: LocalStoreSession): List<LocalMessageRecord> {
+        val result = session.messages.listValidUnexpired(CONV)
+        assertTrue("expected available messages, got $result", result is LocalMessageListResult.Available)
+        return (result as LocalMessageListResult.Available).records
+    }
+
+    private fun listedShells(session: LocalStoreSession): List<LocalConversationShell> {
+        val result = session.conversations.list()
+        assertTrue("expected available conversations, got $result", result is LocalConversationListResult.Available)
+        return (result as LocalConversationListResult.Available).shells
+    }
+
+    private fun rawMessageCiphertext(): List<ByteArray> =
+        SQLiteDatabase.openDatabase(
+            context.getDatabasePath(TEST_DB).path,
+            null,
+            SQLiteDatabase.OPEN_READONLY,
+        ).use { db ->
+            db.rawQuery("SELECT ciphertext FROM messages", null).use { cursor ->
+                buildList {
+                    while (cursor.moveToNext()) {
+                        add(cursor.getBlob(0))
+                    }
+                }
+            }
+        }
 
     private fun rawMessageCount(): Int =
         SQLiteDatabase.openDatabase(

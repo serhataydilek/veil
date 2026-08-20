@@ -265,12 +265,16 @@ internal class SqliteLocalRecordStore(
             cursor.getBlob(0)
         }
 
-    override fun upsertMeta(metaKey: String, ciphertext: ByteArray) {
-        val values = ContentValues().apply {
-            put(COL_META_KEY, metaKey)
-            put(COL_CIPHERTEXT, ciphertext)
+    override fun upsertMeta(metaKey: String, ciphertext: ByteArray): Boolean {
+        return try {
+            val values = ContentValues().apply {
+                put(COL_META_KEY, metaKey)
+                put(COL_CIPHERTEXT, ciphertext)
+            }
+            db.insertWithOnConflict(TABLE_META, null, values, SQLiteDatabase.CONFLICT_REPLACE) != -1L
+        } catch (_: SQLiteException) {
+            false
         }
-        db.insertWithOnConflict(TABLE_META, null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
     override fun deleteMeta(metaKey: String) {

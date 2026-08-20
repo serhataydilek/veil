@@ -5,7 +5,18 @@ import com.veil.app.security.ProtectedStateFormat
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.GeneralSecurityException
+import java.security.InvalidAlgorithmParameterException
+import java.security.InvalidKeyException
+import java.security.KeyStoreException
+import java.security.NoSuchAlgorithmException
+import java.security.NoSuchProviderException
+import java.security.ProviderException
+import java.security.UnrecoverableKeyException
+import javax.crypto.AEADBadTagException
+import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
+import javax.crypto.IllegalBlockSizeException
+import javax.crypto.NoSuchPaddingException
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
@@ -13,6 +24,76 @@ internal enum class LocalRecordType(val discriminant: Byte) {
     CONVERSATION(1),
     MESSAGE(2),
     TIME_BOUND(3),
+}
+
+internal enum class LocalCryptoFailureKind {
+    AuthenticationFailed,
+    KeyUnavailable,
+}
+
+/**
+ * Classifies expected local-record crypto exceptions without treating key or
+ * provider unavailability as authenticated ciphertext corruption.
+ */
+internal object LocalCryptoFailures {
+    fun classify(error: GeneralSecurityException): LocalCryptoFailureKind = when (error) {
+        is InvalidKeyException,
+        is KeyStoreException,
+        is UnrecoverableKeyException,
+        is NoSuchAlgorithmException,
+        is NoSuchProviderException,
+        is NoSuchPaddingException,
+        -> LocalCryptoFailureKind.KeyUnavailable
+        is AEADBadTagException,
+        is BadPaddingException,
+        is IllegalBlockSizeException,
+        is InvalidAlgorithmParameterException,
+        -> LocalCryptoFailureKind.AuthenticationFailed
+        else -> LocalCryptoFailureKind.AuthenticationFailed
+    }
+}
+
+internal sealed interface LocalDecryptResult<out T> {
+    data class Success<T>(val value: T) : LocalDecryptResult<T>
+    data object AuthenticationFailed : LocalDecryptResult<Nothing>
+    data object KeyUnavailable : LocalDecryptResult<Nothing>
+    data object Unreadable : LocalDecryptResult<Nothing>
+}
+
+internal sealed interface LocalEncryptResult {
+    data class Success(val blob: ProtectedBlob) : LocalEncryptResult
+    data object KeyUnavailable : LocalEncryptResult
+    data object Failed : LocalEncryptResult
+}
+
+internal fun LocalRecordCipher.encryptLocal(
+    key: SecretKey,
+    plaintext: ByteArray,
+    aad: ByteArray,
+): LocalEncryptResult = try {
+    LocalEncryptResult.Success(encrypt(key, plaintext, aad))
+} catch (_: ProviderException) {
+    LocalEncryptResult.KeyUnavailable
+} catch (error: GeneralSecurityException) {
+    when (LocalCryptoFailures.classify(error)) {
+        LocalCryptoFailureKind.KeyUnavailable -> LocalEncryptResult.KeyUnavailable
+        LocalCryptoFailureKind.AuthenticationFailed -> LocalEncryptResult.Failed
+    }
+}
+
+internal fun LocalRecordCipher.decryptLocal(
+    key: SecretKey,
+    blob: ProtectedBlob,
+    aad: ByteArray,
+): LocalDecryptResult<ByteArray> = try {
+    LocalDecryptResult.Success(decrypt(key, blob, aad))
+} catch (_: ProviderException) {
+    LocalDecryptResult.KeyUnavailable
+} catch (error: GeneralSecurityException) {
+    when (LocalCryptoFailures.classify(error)) {
+        LocalCryptoFailureKind.KeyUnavailable -> LocalDecryptResult.KeyUnavailable
+        LocalCryptoFailureKind.AuthenticationFailed -> LocalDecryptResult.AuthenticationFailed
+    }
 }
 
 /**
@@ -24,10 +105,10 @@ internal object LocalRecordAad {
     internal const val FORMAT_VERSION = 1
     internal const val MAX_RECORD_ID_BYTES = 64
 
-    fun encode(type: LocalRecordType, recordLocalId: String, formatVersion: Int = FORMAT_VERSION): ByteArray {
+    fun encode(type: LocalRecordType, recordLocalId: String, formatVersion: Int = FORMAT_VERSION): ByteArray? {
+        if (!validLocalId(recordLocalId)) return null
+        if (formatVersion !in 0..255) return null
         val idBytes = recordLocalId.encodeToByteArray()
-        require(idBytes.isNotEmpty() && idBytes.size <= MAX_RECORD_ID_BYTES)
-        require(formatVersion in 0..255)
         return ByteBuffer.allocate(domain.size + 1 + 2 + idBytes.size + 1)
             .order(ByteOrder.BIG_ENDIAN)
             .put(domain)

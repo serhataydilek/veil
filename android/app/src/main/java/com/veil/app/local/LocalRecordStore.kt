@@ -30,7 +30,7 @@ internal interface LocalRecordStore {
     fun deleteAllMessages(): Int
     fun messageCount(): Int
     fun loadMeta(metaKey: String): ByteArray?
-    fun upsertMeta(metaKey: String, ciphertext: ByteArray)
+    fun upsertMeta(metaKey: String, ciphertext: ByteArray): Boolean
     fun deleteMeta(metaKey: String)
     fun close()
 }
