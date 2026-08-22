@@ -9,6 +9,12 @@ import org.junit.Test
 
 class NotificationPrivacyTest {
     @Test
+    fun permissionStateIsAuthoritativeForApiLevelAndGrant() {
+        assertEquals(NotificationPermissionState.ENABLED, NotificationPrivacy.permissionState(33, true))
+        assertEquals(NotificationPermissionState.DISABLED, NotificationPrivacy.permissionState(33, false))
+        assertEquals(NotificationPermissionState.NOT_REQUIRED, NotificationPrivacy.permissionState(32, false))
+    }
+    @Test
     fun permissionIsOnlyRuntimeRequiredOnAndroid13AndLater() {
         assertFalse(NotificationPrivacy.permissionIsRuntimeRequired(32))
         assertTrue(NotificationPrivacy.permissionIsRuntimeRequired(33))

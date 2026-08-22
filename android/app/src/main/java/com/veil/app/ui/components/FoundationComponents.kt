@@ -38,8 +38,8 @@ fun EmptyState(
     body: String,
     primaryLabel: String,
     onPrimary: () -> Unit,
-    secondaryLabel: String,
-    onSecondary: () -> Unit,
+    secondaryLabel: String? = null,
+    onSecondary: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier.fillMaxSize().padding(VeilSpacing.Lg),
@@ -49,7 +49,9 @@ fun EmptyState(
         Text(title, style = MaterialTheme.typography.headlineSmall)
         Text(body)
         Button(onClick = onPrimary) { Text(primaryLabel) }
-        TextButton(onClick = onSecondary) { Text(secondaryLabel) }
+        if (secondaryLabel != null && onSecondary != null) {
+            TextButton(onClick = onSecondary) { Text(secondaryLabel) }
+        }
     }
 }
 

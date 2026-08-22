@@ -10,11 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -22,12 +20,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import com.veil.app.core.CoreBridgeStatus
-import com.veil.app.core.RustCoreBridge
 import com.veil.app.lock.AppLockError
 import com.veil.app.lock.AppLockSessionState
 import com.veil.app.local.LocalDataController
@@ -38,8 +39,9 @@ import com.veil.app.lock.userMessage
 import com.veil.app.security.AppAuthenticator
 import com.veil.app.security.AuthenticatorAvailability
 import com.veil.app.security.ProtectionStatus
+import com.veil.app.privacy.NotificationPrivacy
+import com.veil.app.privacy.NotificationPermissionState
 import com.veil.app.ui.components.EmptyState
-import com.veil.app.ui.components.LocalStatusBanner
 import com.veil.app.ui.components.PrivacyNotice
 import com.veil.app.ui.components.VeilTopBar
 import com.veil.app.ui.theme.VeilSpacing
@@ -48,8 +50,6 @@ private enum class AppScreen {
     WELCOME,
     IDENTITY_NOTICE,
     HOME,
-    ADD_ID,
-    MY_ID,
     SETTINGS,
 }
 
@@ -59,6 +59,21 @@ internal fun VeilApp(
     authenticator: AppAuthenticator,
     localData: LocalDataController,
 ) {
+    val context = LocalContext.current
+    val versionName = remember(context) {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+    }
+    var notificationState by remember {
+        mutableStateOf(
+            NotificationPrivacy.permissionState(
+                Build.VERSION.SDK_INT,
+                Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
+            ),
+        )
+    }
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        notificationState = NotificationPrivacy.permissionState(Build.VERSION.SDK_INT, granted)
+    }
     val state by controller.state.collectAsState()
     val localDataStatus by localData.status.collectAsState()
     var screen by remember { mutableStateOf(AppScreen.WELCOME) }
@@ -106,10 +121,13 @@ internal fun VeilApp(
                 allowContinue = true,
             )
             AppScreen.HOME -> HomeScreen(onNavigate = { screen = it })
-            AppScreen.ADD_ID -> AddIdScreen(onBack = { screen = AppScreen.HOME })
-            AppScreen.MY_ID -> UnavailableIdScreen(onBack = { screen = AppScreen.HOME })
             AppScreen.SETTINGS -> SettingsScreen(
                 state = state,
+                versionName = versionName,
+                notificationState = notificationState,
+                onEnableNotifications = {
+                    if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                },
                 onBack = { screen = AppScreen.HOME },
                 onAppLockChange = { enabled -> controller.setAppLockEnabled(enabled, authenticator) },
             )
@@ -224,8 +242,6 @@ private fun HomeScreen(onNavigate: (AppScreen) -> Unit) {
             VeilTopBar(
                 title = "Veil",
                 actions = listOf(
-                    "Add ID" to { onNavigate(AppScreen.ADD_ID) },
-                    "My ID" to { onNavigate(AppScreen.MY_ID) },
                     "Settings" to { onNavigate(AppScreen.SETTINGS) },
                 ),
             )
@@ -234,72 +250,19 @@ private fun HomeScreen(onNavigate: (AppScreen) -> Unit) {
         EmptyState(
             modifier = Modifier.padding(padding),
             title = "No conversations",
-            body = "Exchange IDs with someone you know to connect.",
-            primaryLabel = "Add ID",
-            onPrimary = { onNavigate(AppScreen.ADD_ID) },
-            secondaryLabel = "Show my ID",
-            onSecondary = { onNavigate(AppScreen.MY_ID) },
+            body = "Conversations require mutual ID exchange, which is not available yet.",
+            primaryLabel = "Settings",
+            onPrimary = { onNavigate(AppScreen.SETTINGS) },
         )
-    }
-}
-
-@Composable
-private fun AddIdScreen(onBack: () -> Unit) {
-    var value by remember { mutableStateOf("") }
-    var saved by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    Scaffold(topBar = { VeilTopBar(title = "Add an ID", onBack = onBack) }) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(VeilSpacing.Lg),
-            verticalArrangement = Arrangement.spacedBy(VeilSpacing.Md),
-        ) {
-            Text("Both people need to add each other’s current IDs before a conversation can begin.")
-            OutlinedTextField(
-                value = value,
-                onValueChange = {
-                    value = it
-                    saved = false
-                    error = null
-                },
-                label = { Text("Contact ID") },
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    autoCorrectEnabled = false,
-                ),
-                visualTransformation = PasswordVisualTransformation(),
-                supportingText = { Text(error ?: "Local input only. Veil does not query an ID.") },
-                isError = error != null,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Button(
-                onClick = {
-                    if (value.isBlank()) error = "Enter an ID to save it locally." else saved = true
-                },
-            ) { Text("Save ID") }
-            if (saved) {
-                LocalStatusBanner("ID saved")
-            }
-        }
-    }
-}
-
-@Composable
-private fun UnavailableIdScreen(onBack: () -> Unit) {
-    Scaffold(topBar = { VeilTopBar(title = "My ID", onBack = onBack) }) { padding ->
-        CenteredContent(padding) {
-            Text("Contact IDs are unavailable", style = MaterialTheme.typography.headlineSmall)
-            Text("Veil does not generate a contact ID until the reviewed capability subsystem exists.")
-            PrivacyNotice("No temporary or production contact ID has been generated.")
-        }
     }
 }
 
 @Composable
 private fun SettingsScreen(
     state: AppPrivacyViewState,
+    versionName: String,
+    notificationState: NotificationPermissionState,
+    onEnableNotifications: () -> Unit,
     onBack: () -> Unit,
     onAppLockChange: (Boolean) -> Unit,
 ) {
@@ -310,7 +273,6 @@ private fun SettingsScreen(
             state.authenticatorAvailability == AuthenticatorAvailability.AVAILABLE ||
                 state.appLockEnabled
             )
-    val coreSnapshot = remember { RustCoreBridge().load() }
     Scaffold(topBar = { VeilTopBar(title = "Settings", onBack = onBack) }) { padding ->
         Column(
             modifier = Modifier
@@ -342,16 +304,25 @@ private fun SettingsScreen(
                 Text("A device screen lock must be configured before App Lock can be used.")
             }
             state.error?.userMessage()?.let { Text(it) }
+            Text("Screen privacy", style = MaterialTheme.typography.titleMedium)
+            Text("Always on. Android protections reduce screenshots and recent-app exposure, but cannot prevent every capture path.")
+            Text("Clipboard privacy", style = MaterialTheme.typography.titleMedium)
+            Text("On supported Android versions, Veil marks sensitive copied content. Veil clears only content it still owns after a short timeout; it cannot control newer clipboard content or platform history.")
+            Text("Notifications", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Screen privacy is always on. Android can block some screenshots, recordings, and recent-app previews. It cannot prevent every capture path.",
+                when (notificationState) {
+                    NotificationPermissionState.ENABLED -> "Enabled"
+                    NotificationPermissionState.DISABLED -> "Disabled"
+                    NotificationPermissionState.NOT_REQUIRED -> "Runtime permission not required on this Android version"
+                },
             )
-            Text("Notifications are not configured in this local-only foundation.")
-            Text("Identity", style = MaterialTheme.typography.titleMedium)
-            Text("Identity creation requires the secure core. Veil does not provide identity recovery.")
-            if (coreSnapshot.status == CoreBridgeStatus.AVAILABLE) {
-                Text("Rust core connected")
+            if (notificationState == NotificationPermissionState.DISABLED) {
+                Button(onClick = onEnableNotifications) { Text("Enable notifications") }
             }
-            Text("Secure messaging features remain unavailable pending review")
+            Text("Notifications are not enabled automatically. Future alerts are designed to avoid sender and message content; Veil does not currently receive messages.")
+            Text("About", style = MaterialTheme.typography.titleMedium)
+            Text("Veil $versionName")
+            Text("Private messenger under development.")
         }
     }
 }

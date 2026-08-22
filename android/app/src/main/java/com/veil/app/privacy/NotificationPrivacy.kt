@@ -16,6 +16,12 @@ internal object NotificationPrivacy {
 
     fun permissionIsRuntimeRequired(apiLevel: Int): Boolean = apiLevel >= 33
 
+    fun permissionState(apiLevel: Int, granted: Boolean): NotificationPermissionState = when {
+        !permissionIsRuntimeRequired(apiLevel) -> NotificationPermissionState.NOT_REQUIRED
+        granted -> NotificationPermissionState.ENABLED
+        else -> NotificationPermissionState.DISABLED
+    }
+
     fun channelSpec(): NotificationChannelSpec = NotificationChannelSpec(
         id = CHANNEL_ID,
         importance = NotificationManager.IMPORTANCE_LOW,
@@ -33,6 +39,12 @@ internal object NotificationPrivacy {
         }
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
+}
+
+internal enum class NotificationPermissionState {
+    ENABLED,
+    DISABLED,
+    NOT_REQUIRED,
 }
 
 internal data class NotificationChannelSpec(
