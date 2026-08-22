@@ -115,6 +115,7 @@ internal object LocalDatabase {
 
 internal class SqliteLocalRecordStore(
     private val helper: LocalDatabaseHelper,
+    private val afterSecurityRecordWriteForTesting: (() -> Unit)? = null,
 ) : LocalRecordStore {
     private val db: SQLiteDatabase = helper.writableDatabase
 
@@ -297,6 +298,7 @@ internal class SqliteLocalRecordStore(
     fun upsertSecurityRecord(ownerId: String, slotId: String, ciphertext: ByteArray) {
         val values = ContentValues().apply { put("owner_id", ownerId); put("slot_id", slotId); put("ciphertext", ciphertext) }
         if (db.insertWithOnConflict("security_records", null, values, SQLiteDatabase.CONFLICT_REPLACE) == -1L) error("security record persist failed")
+        afterSecurityRecordWriteForTesting?.invoke()
     }
     fun deleteSecurityRecord(ownerId: String, slotId: String) { db.delete("security_records", "owner_id = ? AND slot_id = ?", arrayOf(ownerId, slotId)) }
 

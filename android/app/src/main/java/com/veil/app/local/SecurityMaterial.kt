@@ -42,7 +42,10 @@ internal class SecurityMaterialRepository(private val key: SecretKey, private va
     private fun deleteInternal(owner:String,slot:String) { if(SecurityMaterialIds.valid(owner)&&SecurityMaterialIds.valid(slot)) store.deleteSecurityRecord(owner,slot) }
 
     internal class SecurityMaterialTransaction internal constructor(private val repository: SecurityMaterialRepository) {
-        fun put(owner: String, slot: String, payload: ByteArray): Boolean = repository.putInternal(owner, slot, payload)
+        fun put(owner: String, slot: String, payload: ByteArray): Boolean {
+            check(repository.putInternal(owner, slot, payload)) { "security material put failed" }
+            return true
+        }
         fun get(owner: String, slot: String): ByteArray? = repository.getInternal(owner, slot)
         fun delete(owner: String, slot: String) = repository.deleteInternal(owner, slot)
     }
