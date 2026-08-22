@@ -296,7 +296,7 @@ internal class SqliteLocalRecordStore(
     fun loadSecurityRecord(ownerId: String, slotId: String): ByteArray? = db.query("security_records", arrayOf("ciphertext"), "owner_id = ? AND slot_id = ?", arrayOf(ownerId, slotId), null, null, null).use { if (it.moveToFirst()) it.getBlob(0) else null }
     fun upsertSecurityRecord(ownerId: String, slotId: String, ciphertext: ByteArray) {
         val values = ContentValues().apply { put("owner_id", ownerId); put("slot_id", slotId); put("ciphertext", ciphertext) }
-        db.insertOrThrow("security_records", null, values)
+        if (db.insertWithOnConflict("security_records", null, values, SQLiteDatabase.CONFLICT_REPLACE) == -1L) error("security record persist failed")
     }
     fun deleteSecurityRecord(ownerId: String, slotId: String) { db.delete("security_records", "owner_id = ? AND slot_id = ?", arrayOf(ownerId, slotId)) }
 
