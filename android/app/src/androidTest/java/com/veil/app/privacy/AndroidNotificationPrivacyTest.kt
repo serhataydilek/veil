@@ -1,6 +1,5 @@
 package com.veil.app.privacy
 
-import android.app.Notification
 import android.app.NotificationManager
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
@@ -18,11 +17,11 @@ class AndroidNotificationPrivacyTest {
     }
 
     @Test
-    fun futureChannelDefaultsAreSecretAndDoNotBadge() {
+    fun channelDefaultsAreLowImportanceAndBadgeDisabled() {
         NotificationPrivacy.createChannel(context)
         val channel = manager.getNotificationChannel(NotificationPrivacy.CHANNEL_ID)
 
-        assertEquals(Notification.VISIBILITY_SECRET, channel.lockscreenVisibility)
+        assertEquals(NotificationManager.IMPORTANCE_LOW, channel.importance)
         assertFalse(channel.canShowBadge())
     }
 }

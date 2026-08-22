@@ -62,23 +62,47 @@ class AndroidAppLockLifecycleTest {
     }
 
     @Test
-    fun backgroundTransitionRelocks() {
-        val controller = controller()
+    fun briefBackgroundKeepsUnlockedWithinGrace() {
+        val clock = FakeMonotonicClock()
+        val controller = controller(clock)
         controller.onProcessForeground()
         controller.requestUnlock(FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS))
         assertEquals(AppLockSessionState.UNLOCKED, controller.state.value.session)
 
         controller.onProcessBackground()
+        clock.now += AppLockGracePolicy.DEFAULT_GRACE_MILLIS - 1
+        controller.onProcessForeground()
+
+        assertEquals(AppLockSessionState.UNLOCKED, controller.state.value.session)
+        controller.cancel()
+    }
+
+    @Test
+    fun backgroundRelocksAfterGraceExpires() {
+        val clock = FakeMonotonicClock()
+        val controller = controller(clock)
+        controller.onProcessForeground()
+        controller.requestUnlock(FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS))
+        assertEquals(AppLockSessionState.UNLOCKED, controller.state.value.session)
+
+        controller.onProcessBackground()
+        clock.now += AppLockGracePolicy.DEFAULT_GRACE_MILLIS + 1
+        controller.onProcessForeground()
 
         assertEquals(AppLockSessionState.LOCKED, controller.state.value.session)
         controller.cancel()
     }
 
-    private fun controller(): AppPrivacyController = AppPrivacyController(
+    private fun controller(clock: MonotonicClock = SystemMonotonicClock): AppPrivacyController = AppPrivacyController(
         store,
+        monotonicClock = clock,
         workerDispatcher = Dispatchers.Unconfined,
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
     )
+
+    private class FakeMonotonicClock(var now: Long = 1_000L) : MonotonicClock {
+        override fun nowMillis(): Long = now
+    }
 
     private companion object {
         const val TEST_ALIAS = "veil.test.app-lock-lifecycle.v1"

@@ -21,11 +21,15 @@ class NotificationPrivacyTest {
     }
 
     @Test
-    fun channelDefaultsArePrivateAndLowInterrupting() {
+    fun channelDefaultsAreLowInterruptingAndBadgeDisabled() {
         val spec = NotificationPrivacy.channelSpec()
         assertEquals(NotificationManager.IMPORTANCE_LOW, spec.importance)
-        assertEquals(Notification.VISIBILITY_SECRET, spec.lockscreenVisibility)
         assertFalse(spec.showBadge)
+    }
+
+    @Test
+    fun futureNotificationsMustBeSecretIndividually() {
+        assertEquals(Notification.VISIBILITY_SECRET, NotificationPrivacy.notificationVisibility())
     }
 
 }

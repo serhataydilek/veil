@@ -24,7 +24,7 @@ An IME is a separate process. Veil can request suitable flags but cannot guarant
 
 ## Notifications
 
-There is no delivery, push provider, or notification emission in Phase 1H. The notification foundation declares `POST_NOTIFICATIONS` for a future deliberate user-facing feature but makes no runtime request at launch or elsewhere. It exposes a future channel specification only: low importance, no badge, and `VISIBILITY_SECRET`. It contains no message body, sender, identifier, pairing, safety, or cryptographic field and creates no notification extras.
+There is no delivery, push provider, or notification emission in Phase 1H. The notification foundation declares `POST_NOTIFICATIONS` for a future deliberate user-facing feature but makes no runtime request at launch or elsewhere. Phase 1L clarifies that channel lockscreen visibility is system/ranker-controlled and cannot guarantee secret content. The channel remains low importance and badge-disabled; future individual notifications must set `VISIBILITY_SECRET` before delivery. It contains no message body, sender, identifier, pairing, safety, or cryptographic field and creates no notification extras.
 
 ## Logging audit
 
