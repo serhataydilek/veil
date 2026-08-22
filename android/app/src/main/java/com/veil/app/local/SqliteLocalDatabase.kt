@@ -7,7 +7,7 @@ import android.database.sqlite.SQLiteException
 import android.database.sqlite.SQLiteOpenHelper
 
 internal const val LOCAL_DATABASE_NAME = "veil-local.db"
-internal const val LOCAL_SCHEMA_VERSION = 1
+internal const val LOCAL_SCHEMA_VERSION = 2
 
 internal sealed interface LocalDatabaseOpenResult {
     data class Opened(val store: SqliteLocalRecordStore) : LocalDatabaseOpenResult
@@ -58,6 +58,7 @@ internal class LocalDatabaseHelper(
         )
         db.execSQL("CREATE INDEX idx_messages_expiry_hint ON messages(expiry_hint_ms)")
         db.execSQL("CREATE INDEX idx_messages_conversation ON messages(conversation_id)")
+        createSecurityRecords(db)
     }
 
     override fun onOpen(db: SQLiteDatabase) {
@@ -67,7 +68,14 @@ internal class LocalDatabaseHelper(
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        throw IncompatibleLocalSchemaException()
+        if (oldVersion == 1 && newVersion == 2) {
+            db.beginTransaction()
+            try { createSecurityRecords(db); db.setTransactionSuccessful() } finally { db.endTransaction() }
+        } else throw IncompatibleLocalSchemaException()
+    }
+
+    private fun createSecurityRecords(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE security_records (owner_id TEXT NOT NULL, slot_id TEXT NOT NULL, ciphertext BLOB NOT NULL, PRIMARY KEY(owner_id, slot_id))")
     }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -284,6 +292,13 @@ internal class SqliteLocalRecordStore(
     override fun close() {
         helper.close()
     }
+
+    fun loadSecurityRecord(ownerId: String, slotId: String): ByteArray? = db.query("security_records", arrayOf("ciphertext"), "owner_id = ? AND slot_id = ?", arrayOf(ownerId, slotId), null, null, null).use { if (it.moveToFirst()) it.getBlob(0) else null }
+    fun upsertSecurityRecord(ownerId: String, slotId: String, ciphertext: ByteArray) {
+        val values = ContentValues().apply { put("owner_id", ownerId); put("slot_id", slotId); put("ciphertext", ciphertext) }
+        db.insertOrThrow("security_records", null, values)
+    }
+    fun deleteSecurityRecord(ownerId: String, slotId: String) { db.delete("security_records", "owner_id = ? AND slot_id = ?", arrayOf(ownerId, slotId)) }
 
     internal fun pragmaValue(pragma: String): String =
         db.rawQuery("PRAGMA $pragma", null).use { cursor ->

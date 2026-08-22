@@ -24,6 +24,7 @@ internal enum class LocalRecordType(val discriminant: Byte) {
     CONVERSATION(1),
     MESSAGE(2),
     TIME_BOUND(3),
+    SECURITY_MATERIAL(4),
 }
 
 internal enum class LocalCryptoFailureKind {
@@ -118,6 +119,17 @@ internal object LocalRecordAad {
             .put(formatVersion.toByte())
             .array()
     }
+    fun encodeSecurityMaterial(ownerId: String, slotId: String, formatVersion: Int = FORMAT_VERSION): ByteArray? {
+        if (!SecurityMaterialIds.valid(ownerId) || !SecurityMaterialIds.valid(slotId) || formatVersion !in 0..255) return null
+        val owner = ownerId.encodeToByteArray(); val slot = slotId.encodeToByteArray()
+        return ByteBuffer.allocate(domain.size + 1 + 2 + owner.size + 2 + slot.size + 1).order(ByteOrder.BIG_ENDIAN)
+            .put(domain).put(LocalRecordType.SECURITY_MATERIAL.discriminant).putShort(owner.size.toShort()).put(owner).putShort(slot.size.toShort()).put(slot).put(formatVersion.toByte()).array()
+    }
+}
+
+internal object SecurityMaterialIds {
+    const val MAX_BYTES = 64
+    fun valid(value: String): Boolean = value.isNotEmpty() && value.encodeToByteArray().size <= MAX_BYTES && value.all { it.isLetterOrDigit() || it == '-' || it == '_' }
 }
 
 internal interface LocalRecordCipher {
