@@ -21,10 +21,29 @@ internal object SecurityMaterialCodec {
 }
 
 internal class SecurityMaterialRepository(private val key: SecretKey, private val cipher: LocalRecordCipher, private val store: SqliteLocalRecordStore) {
+    private var transactionActive = false
+
+    fun <T> transaction(block: SecurityMaterialTransaction.() -> T): T {
+        check(!transactionActive) { "nested security material transactions are not supported" }
+        transactionActive = true
+        return try { store.transact { SecurityMaterialTransaction(this).block() } } finally { transactionActive = false }
+    }
+
     fun put(owner: String, slot: String, payload: ByteArray): Boolean {
+        return putInternal(owner, slot, payload)
+    }
+    private fun putInternal(owner: String, slot: String, payload: ByteArray): Boolean {
         val plain=SecurityMaterialCodec.encode(owner,slot,payload) ?: return false
         try { val aad=LocalRecordAad.encodeSecurityMaterial(owner,slot) ?: return false; val enc= cipher.encryptLocal(key,plain,aad); if(enc !is LocalEncryptResult.Success) return false; val bytes=LocalRecordFormat.encode(enc.blob) ?: return false; store.upsertSecurityRecord(owner,slot,bytes); return true } finally { plain.fill(0) }
     }
-    fun get(owner:String,slot:String):ByteArray? { if(!SecurityMaterialIds.valid(owner)||!SecurityMaterialIds.valid(slot))return null; val row=store.loadSecurityRecord(owner,slot)?:return null; val blob=LocalRecordFormat.decode(row)?:return null; val dec=cipher.decryptLocal(key,blob,LocalRecordAad.encodeSecurityMaterial(owner,slot)?:return null); return if(dec is LocalDecryptResult.Success) try { SecurityMaterialCodec.parse(dec.value,owner,slot)?.copyOf() } finally { dec.value.fill(0) } else null }
-    fun delete(owner:String,slot:String) { if(SecurityMaterialIds.valid(owner)&&SecurityMaterialIds.valid(slot)) store.deleteSecurityRecord(owner,slot) }
+    fun get(owner:String,slot:String):ByteArray? = getInternal(owner,slot)
+    private fun getInternal(owner:String,slot:String):ByteArray? { if(!SecurityMaterialIds.valid(owner)||!SecurityMaterialIds.valid(slot))return null; val row=store.loadSecurityRecord(owner,slot)?:return null; val blob=LocalRecordFormat.decode(row)?:return null; val dec=cipher.decryptLocal(key,blob,LocalRecordAad.encodeSecurityMaterial(owner,slot)?:return null); return if(dec is LocalDecryptResult.Success) try { SecurityMaterialCodec.parse(dec.value,owner,slot)?.copyOf() } finally { dec.value.fill(0) } else null }
+    fun delete(owner:String,slot:String) { deleteInternal(owner,slot) }
+    private fun deleteInternal(owner:String,slot:String) { if(SecurityMaterialIds.valid(owner)&&SecurityMaterialIds.valid(slot)) store.deleteSecurityRecord(owner,slot) }
+
+    internal class SecurityMaterialTransaction internal constructor(private val repository: SecurityMaterialRepository) {
+        fun put(owner: String, slot: String, payload: ByteArray): Boolean = repository.putInternal(owner, slot, payload)
+        fun get(owner: String, slot: String): ByteArray? = repository.getInternal(owner, slot)
+        fun delete(owner: String, slot: String) = repository.deleteInternal(owner, slot)
+    }
 }
