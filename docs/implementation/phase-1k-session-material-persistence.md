@@ -55,7 +55,7 @@ Tests cover callback rollback, replacement and deletion restoration, new-row rem
 
 ## Durability and cross-domain limit
 
-Phase 1K does not change the reviewed SQLite configuration: WAL remains disabled (`journal_mode=DELETE`), foreign keys are enabled, and `secure_delete` is enabled. SQLite transactions provide atomic commit/rollback under the platform's SQLite durability behavior; this is not a guarantee against every filesystem, storage-controller, process, or power-loss failure. `secure_delete` is not forensic erasure.
+Phase 1K does not change the reviewed SQLite configuration: WAL remains disabled (`journal_mode=DELETE`), foreign keys are enabled, and `secure_delete` is enabled. `synchronous` is not explicitly configured here and therefore remains the platform SQLite default. SQLite transactions provide atomic commit/rollback under the platform's SQLite durability behavior; this is not a guarantee against every filesystem, storage-controller, process, or power-loss failure. `secure_delete` is not forensic erasure.
 
 Supported now: atomic mutations among opaque security-material records. Not yet supported: atomic composition with conversation/message state, actual encrypt/decrypt plus ratchet-state persistence, or libsignal callback/store integration. The existing local store transaction is the database-scoped seam, but Phase 1K deliberately does not combine those domains. It narrows the crash-atomic storage blocker in ADR 015; it does not satisfy the full ADR 015 gate.
 
