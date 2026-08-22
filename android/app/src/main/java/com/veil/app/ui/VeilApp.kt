@@ -14,6 +14,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -23,6 +24,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.veil.app.core.CoreBridgeStatus
 import com.veil.app.core.RustCoreBridge
 import com.veil.app.lock.AppLockError
@@ -262,6 +265,11 @@ private fun AddIdScreen(onBack: () -> Unit) {
                     error = null
                 },
                 label = { Text("Contact ID") },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    autoCorrectEnabled = false,
+                ),
+                visualTransformation = PasswordVisualTransformation(),
                 supportingText = { Text(error ?: "Local input only. Veil does not query an ID.") },
                 isError = error != null,
                 modifier = Modifier.fillMaxWidth(),

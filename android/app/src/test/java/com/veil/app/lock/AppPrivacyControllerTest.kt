@@ -27,6 +27,45 @@ import org.junit.Test
 
 class AppPrivacyControllerTest {
     @Test
+    fun briefBackgroundWithinMonotonicGraceKeepsUnlocked() {
+        val fixture = readyFixture()
+        val clock = FakeMonotonicClock(1_000)
+        val controller = controller(fixture, clock)
+        controller.onProcessForeground()
+        controller.setAppLockEnabled(true, FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS))
+
+        controller.onProcessBackground()
+        clock.now = 30_999
+        controller.onProcessForeground()
+
+        assertEquals(AppLockSessionState.UNLOCKED, controller.state.value.session)
+        controller.cancel()
+    }
+
+    @Test
+    fun graceExpiryRelocksWithoutUsingWallClock() {
+        val fixture = readyFixture()
+        val clock = FakeMonotonicClock(1_000)
+        val controller = controller(fixture, clock)
+        controller.onProcessForeground()
+        controller.setAppLockEnabled(true, FakeAppAuthenticator(nextResult = AuthenticationResult.SUCCESS))
+
+        controller.onProcessBackground()
+        clock.now = 31_001
+        controller.onProcessForeground()
+
+        assertEquals(AppLockSessionState.LOCKED, controller.state.value.session)
+        controller.cancel()
+    }
+
+    @Test
+    fun monotonicRollbackFailsClosedRatherThanExtendingGrace() {
+        val policy = AppLockGracePolicy(30_000)
+
+        assertFalse(policy.allowsResume(backgroundedAtMillis = 100, nowMillis = 99))
+    }
+
+    @Test
     fun appLockDefaultsDisabledAfterPhase1bMigration() {
         val fixture = protectionFixture()
         writeLegacySentinel(fixture)
@@ -160,7 +199,7 @@ class AppPrivacyControllerTest {
     }
 
     @Test
-    fun realBackgroundRelocksWhenEnabled() {
+    fun realBackgroundStartsMemoryOnlyGraceWhenEnabled() {
         val fixture = readyFixture()
         assertTrue(fixture.store.writeAppLockEnabled(true))
         val controller = controller(fixture)
@@ -169,7 +208,7 @@ class AppPrivacyControllerTest {
 
         controller.onProcessBackground()
 
-        assertEquals(AppLockSessionState.LOCKED, controller.state.value.session)
+        assertEquals(AppLockSessionState.UNLOCKED, controller.state.value.session)
     }
 
     @Test
@@ -457,12 +496,20 @@ class AppPrivacyControllerTest {
         fixture.file.contents = ProtectedStateFormat.encode(blob)
     }
 
-    private fun controller(fixture: ProtectionFixture): AppPrivacyController {
+    private fun controller(
+        fixture: ProtectionFixture,
+        clock: MonotonicClock = FakeMonotonicClock(0),
+    ): AppPrivacyController {
         val created = AppPrivacyController(
             fixture.store,
+            monotonicClock = clock,
             workerDispatcher = Dispatchers.Unconfined,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
         )
         return created
+    }
+
+    private class FakeMonotonicClock(var now: Long) : MonotonicClock {
+        override fun nowMillis(): Long = now
     }
 }
