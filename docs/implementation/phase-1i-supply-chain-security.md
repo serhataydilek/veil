@@ -16,7 +16,7 @@ Gradle dependency verification metadata is deliberately not auto-generated in th
 
 `scripts/New-VeilSbom.ps1` writes ignored output under `artifacts/sbom`. It emits a CycloneDX 1.5 Rust component inventory from `cargo metadata --locked` and a separately hashed Android version-catalog inventory. Outputs contain no developer paths or credentials.
 
-`scripts/Test-VeilApk.ps1` audits the built manifest and ZIP: only biometric/notification permissions and AndroidX's app-scoped dynamic-receiver permission are accepted; INTERNET, location, contacts, SMS, microphone, camera, media/storage, source, cargo metadata, developer paths, signing material, debug symbols, and unexpected native libraries fail. Expected native ABIs are arm64-v8a and x86_64 with `veil_ffi.so` only.
+`scripts/Test-VeilApk.ps1` audits the built manifest and ZIP: only biometric/notification permissions and AndroidX's app-scoped dynamic-receiver permission are accepted; INTERNET, location, contacts, SMS, microphone, camera, media/storage, source, cargo metadata, developer paths, signing material, debug symbols, and unexpected native libraries fail. Expected native ABIs are arm64-v8a and x86_64, each with reviewed `libveil_ffi.so`, JNA `libjnidispatch.so`, and Compose path `libandroidx.graphics.path.so`.
 
 `scripts/Test-VeilRepositoryHygiene.ps1` rejects signing/key files and scans tracked-style source areas for private-key blocks, token assignments, and developer paths. False positives fail visibly and need a reviewed pattern change; ignored build/cache folders are excluded.
 
