@@ -27,6 +27,8 @@ import com.veil.app.core.CoreBridgeStatus
 import com.veil.app.core.RustCoreBridge
 import com.veil.app.lock.AppLockError
 import com.veil.app.lock.AppLockSessionState
+import com.veil.app.local.LocalDataController
+import com.veil.app.local.LocalDataStatus
 import com.veil.app.lock.AppPrivacyController
 import com.veil.app.lock.AppPrivacyViewState
 import com.veil.app.lock.userMessage
@@ -52,18 +54,27 @@ private enum class AppScreen {
 internal fun VeilApp(
     controller: AppPrivacyController,
     authenticator: AppAuthenticator,
+    localData: LocalDataController,
 ) {
     val state by controller.state.collectAsState()
+    val localDataStatus by localData.status.collectAsState()
     var screen by remember { mutableStateOf(AppScreen.WELCOME) }
     LaunchedEffect(state.session, state.appLockEnabled) {
         if (state.session == AppLockSessionState.UNLOCKED && state.appLockEnabled) {
             screen = AppScreen.HOME
         }
     }
+    LaunchedEffect(state.protectionStatus) {
+        localData.onProtectionStatus(state.protectionStatus)
+    }
 
     when {
         state.session == AppLockSessionState.EVALUATING ||
             state.protectionStatus == ProtectionStatus.CHECKING -> WaitingScreen()
+        state.protectionStatus == ProtectionStatus.READY && localDataFailed(localDataStatus) ->
+            LocalDataUnavailableScreen()
+        state.protectionStatus == ProtectionStatus.READY &&
+            localDataStatus != LocalDataStatus.READY -> WaitingScreen()
         state.session == AppLockSessionState.UNAVAILABLE ||
             state.protectionStatus == ProtectionStatus.KEY_UNAVAILABLE ||
             state.protectionStatus == ProtectionStatus.CORRUPT_OR_UNREADABLE ||
@@ -99,6 +110,31 @@ internal fun VeilApp(
                 onBack = { screen = AppScreen.HOME },
                 onAppLockChange = { enabled -> controller.setAppLockEnabled(enabled, authenticator) },
             )
+        }
+    }
+}
+
+private fun localDataFailed(status: LocalDataStatus): Boolean = when (status) {
+    LocalDataStatus.KEY_UNAVAILABLE,
+    LocalDataStatus.CORRUPT_OR_UNREADABLE,
+    LocalDataStatus.POLICY_UNAVAILABLE,
+    LocalDataStatus.INCOMPATIBLE,
+    LocalDataStatus.ERROR,
+    -> true
+    LocalDataStatus.WAITING_FOR_PROTECTION,
+    LocalDataStatus.CHECKING,
+    LocalDataStatus.PURGING,
+    LocalDataStatus.READY,
+    -> false
+}
+
+@Composable
+private fun LocalDataUnavailableScreen() {
+    Scaffold { padding ->
+        CenteredContent(padding) {
+            Text("Local conversation data is unavailable.", style = MaterialTheme.typography.headlineSmall)
+            Text("Retained messages are not shown.")
+            PrivacyNotice("This screen does not display conversation or message contents.")
         }
     }
 }

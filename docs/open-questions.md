@@ -13,7 +13,7 @@ Phase 0.8 review packages (`docs/review/`) prepared the original blockers. Phase
 - Push metadata reduction architecture: assess polling, rotated wake handles, and independently operated separation against their actual correlation and availability costs; V1 knowingly accepts direct token linkability.
 - Identity-key rotation/replacement and safety-code UX; decide whether any legitimate migration is ever supported.
 - Platform implementation of the accepted product-state rules: app-lock grace timeout, clipboard behavior, keyboard-learning controls, and notification permission/OS history behavior. Phase 1C implements optional platform App Lock, always-on `FLAG_SECURE`, and API 33+ recents protection; timeout policy remains deferred. Identity/session storage remains pending.
-- Database encryption, Keystore capabilities/fallbacks, backup exclusions, WAL cleanup, screenshots/clipboard/recent-preview policy by Android version.
+- Phase 1G implements platform SQLite local conversation/message rows with per-record AES-GCM under the existing local-protection key, a conservative time lower bound, and a startup purge barrier (ADR 017). Residual SQLite/journal/flash remnants, clock attestation, and future session-material storage remain open. WAL is not enabled.
 - Packet-size buckets, ordering/reordering limit, mailbox rotation thresholds/revocation, ACK failure and crash consistency.
 - Operational incident process without retaining sensitive logs; exact proxy log configuration, dependency provenance/SBOM/reproducible build policy.
 - Report evidence format, recipient, retention, legal safeguards, and accidental-overdisclosure UX.

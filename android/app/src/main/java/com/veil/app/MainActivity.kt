@@ -5,6 +5,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModelProvider
+import com.veil.app.local.LocalDataViewModel
 import com.veil.app.lock.AppPrivacyViewModel
 import com.veil.app.privacy.ScreenPrivacy
 import com.veil.app.security.AndroidAppAuthenticator
@@ -14,6 +15,7 @@ import com.veil.app.ui.theme.VeilTheme
 class MainActivity : FragmentActivity() {
     private lateinit var authenticator: AndroidAppAuthenticator
     private lateinit var privacyViewModel: AppPrivacyViewModel
+    private lateinit var localDataViewModel: LocalDataViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -22,6 +24,10 @@ class MainActivity : FragmentActivity() {
             this,
             AppPrivacyViewModel.factory(this),
         )[AppPrivacyViewModel::class.java]
+        localDataViewModel = ViewModelProvider(
+            this,
+            LocalDataViewModel.factory(this),
+        )[LocalDataViewModel::class.java]
         authenticator = AndroidAppAuthenticator(this)
         enableEdgeToEdge()
         setContent {
@@ -29,6 +35,7 @@ class MainActivity : FragmentActivity() {
                 VeilApp(
                     controller = privacyViewModel.controller,
                     authenticator = authenticator,
+                    localData = localDataViewModel.controller,
                 )
             }
         }

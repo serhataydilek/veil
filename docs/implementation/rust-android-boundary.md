@@ -7,3 +7,5 @@ Kotlin owns Android lifecycle, Compose, navigation, permissions, notifications, 
 `veil-core` remains platform-independent and forbids handwritten `unsafe`. `veil-ffi` is a narrow bridge crate: it maps `veil-core` policy into UniFFI types and does not contain Android Keystore, lifecycle, BiometricPrompt, filesystem paths, notifications, or Compose behavior.
 
 The live FFI contract is policy/status only (`bridge_contract_version`, `core_policy_snapshot`). It does not create identity, contact IDs, rendezvous capabilities, sessions, or ciphertext. Kotlin must not copy future cryptographic logic; Android security-feature gates for rendezvous and secure session read Rust through `RustCoreBridge` and fail closed when the native library is missing, incompatible, or unreadable.
+
+Phase 1G local persistence is Android-owned (platform SQLite plus the existing Keystore local-protection key). The Rust core remains the production authority for `maxMessageAvailabilitySeconds`. Local storage initialization fails closed when the bridge is unavailable, incompatible, or the policy value is missing/invalid. Kotlin must not duplicate a 24-hour policy constant.
