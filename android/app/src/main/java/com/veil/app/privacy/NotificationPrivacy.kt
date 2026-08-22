@@ -25,15 +25,16 @@ internal object NotificationPrivacy {
     fun channelSpec(): NotificationChannelSpec = NotificationChannelSpec(
         id = CHANNEL_ID,
         importance = NotificationManager.IMPORTANCE_LOW,
-        lockscreenVisibility = Notification.VISIBILITY_SECRET,
         showBadge = false,
     )
+
+    /** Future delivery must apply this to each notification; channels cannot enforce it. */
+    fun notificationVisibility(): Int = Notification.VISIBILITY_SECRET
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val spec = channelSpec()
         val channel = NotificationChannel(spec.id, "Veil activity", spec.importance).apply {
-            lockscreenVisibility = spec.lockscreenVisibility
             setShowBadge(spec.showBadge)
             description = "Privacy-preserving Veil activity alerts"
         }
@@ -50,6 +51,5 @@ internal enum class NotificationPermissionState {
 internal data class NotificationChannelSpec(
     val id: String,
     val importance: Int,
-    val lockscreenVisibility: Int,
     val showBadge: Boolean,
 )
