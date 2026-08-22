@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.StateFlow
  */
 internal class AppPrivacyController(
     private val protectedState: ProtectedStateStore,
+    private val monotonicClock: MonotonicClock = SystemMonotonicClock,
+    private val gracePolicy: AppLockGracePolicy = AppLockGracePolicy(),
     private val workerDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
 ) {
@@ -33,6 +35,7 @@ internal class AppPrivacyController(
     private val authInFlight = AtomicBoolean(false)
     private var processInForeground = false
     private var pendingUnlock = false
+    private var backgroundedAtMillis: Long? = null
 
     init {
         load()
@@ -81,6 +84,15 @@ internal class AppPrivacyController(
                 preferenceChangeInProgress = false,
                 error = null,
             )
+            backgroundedAtMillis = null
+            return
+        }
+        if (current.appLockEnabled && current.session == AppLockSessionState.UNLOCKED) {
+            val backgroundedAt = backgroundedAtMillis
+            backgroundedAtMillis = null
+            if (backgroundedAt == null || !gracePolicy.allowsResume(backgroundedAt, monotonicClock.nowMillis())) {
+                mutableState.value = current.copy(session = AppLockSessionState.LOCKED, error = null)
+            }
         }
     }
 
@@ -89,7 +101,7 @@ internal class AppPrivacyController(
         val current = mutableState.value
         if (relockBlocked(current)) return
         if (current.appLockEnabled && current.session == AppLockSessionState.UNLOCKED) {
-            mutableState.value = current.copy(session = AppLockSessionState.LOCKED, error = null)
+            backgroundedAtMillis = monotonicClock.nowMillis()
         }
     }
 
