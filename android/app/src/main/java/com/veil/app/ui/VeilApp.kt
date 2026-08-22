@@ -20,6 +20,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +39,8 @@ import com.veil.app.lock.userMessage
 import com.veil.app.security.AppAuthenticator
 import com.veil.app.security.AuthenticatorAvailability
 import com.veil.app.security.ProtectionStatus
+import com.veil.app.privacy.NotificationPrivacy
+import com.veil.app.privacy.NotificationPermissionState
 import com.veil.app.ui.components.EmptyState
 import com.veil.app.ui.components.PrivacyNotice
 import com.veil.app.ui.components.VeilTopBar
@@ -54,6 +62,17 @@ internal fun VeilApp(
     val context = LocalContext.current
     val versionName = remember(context) {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+    }
+    var notificationState by remember {
+        mutableStateOf(
+            NotificationPrivacy.permissionState(
+                Build.VERSION.SDK_INT,
+                Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
+            ),
+        )
+    }
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        notificationState = NotificationPrivacy.permissionState(Build.VERSION.SDK_INT, granted)
     }
     val state by controller.state.collectAsState()
     val localDataStatus by localData.status.collectAsState()
@@ -105,6 +124,10 @@ internal fun VeilApp(
             AppScreen.SETTINGS -> SettingsScreen(
                 state = state,
                 versionName = versionName,
+                notificationState = notificationState,
+                onEnableNotifications = {
+                    if (Build.VERSION.SDK_INT >= 33) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                },
                 onBack = { screen = AppScreen.HOME },
                 onAppLockChange = { enabled -> controller.setAppLockEnabled(enabled, authenticator) },
             )
@@ -238,6 +261,8 @@ private fun HomeScreen(onNavigate: (AppScreen) -> Unit) {
 private fun SettingsScreen(
     state: AppPrivacyViewState,
     versionName: String,
+    notificationState: NotificationPermissionState,
+    onEnableNotifications: () -> Unit,
     onBack: () -> Unit,
     onAppLockChange: (Boolean) -> Unit,
 ) {
@@ -284,6 +309,16 @@ private fun SettingsScreen(
             Text("Clipboard privacy", style = MaterialTheme.typography.titleMedium)
             Text("On supported Android versions, Veil marks sensitive copied content. Veil clears only content it still owns after a short timeout; it cannot control newer clipboard content or platform history.")
             Text("Notifications", style = MaterialTheme.typography.titleMedium)
+            Text(
+                when (notificationState) {
+                    NotificationPermissionState.ENABLED -> "Enabled"
+                    NotificationPermissionState.DISABLED -> "Disabled"
+                    NotificationPermissionState.NOT_REQUIRED -> "Runtime permission not required on this Android version"
+                },
+            )
+            if (notificationState == NotificationPermissionState.DISABLED) {
+                Button(onClick = onEnableNotifications) { Text("Enable notifications") }
+            }
             Text("Notifications are not enabled automatically. Future alerts are designed to avoid sender and message content; Veil does not currently receive messages.")
             Text("About", style = MaterialTheme.typography.titleMedium)
             Text("Veil $versionName")
