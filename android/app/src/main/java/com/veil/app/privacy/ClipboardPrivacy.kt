@@ -51,7 +51,13 @@ internal class AndroidClipboardPort(context: Context) : ClipboardPort {
         handler.postDelayed({
             val current = clipboard.primaryClipDescription
             if (current?.label?.toString() == token) {
-                clipboard.clearPrimaryClip()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    clipboard.clearPrimaryClip()
+                } else {
+                    // API 26-27 has no clearPrimaryClip; replace only our owned
+                    // clip so its sensitive text is no longer available.
+                    clipboard.setPrimaryClip(ClipData.newPlainText(token, ""))
+                }
             }
         }, delayMillis)
     }
